@@ -574,24 +574,6 @@ for account in $accounts; do
     account_user_name=$(jq -r ".accounts[\"$account\"].name" "$git_config_repos_json_file")
     account_user_email=$(jq -r ".accounts[\"$account\"].email" "$git_config_repos_json_file")
 
-    # Preparo variables si la cuenta tiene credenciales vía SSH
-    if [ "$credential_ssh" == true ]; then
-        ssh_host=$(jq -r ".accounts[\"$account\"].ssh_host" "$git_config_repos_json_file")
-        account_ssh_type=$(jq -r ".accounts[\"$account\"].ssh_type" "$git_config_repos_json_file")
-        account_ssh_key="$ssh_folder/$ssh_host-sshkey"
-        # Extraigo el nombre de la cuenta de la URL, por ejemplo, para
-        # una url del tipo https://github.com/usuario, extraigo "usuario"
-        git_account_user=$(echo "$account_url" | sed -E 's|.*/([^/]+)$|\1|')
-        # Reconstruyo la URL de clonación usando el ssh_host y el usuario
-        account_clone_url="$ssh_host:$git_account_user"
-        remote_origin_url=$account_clone_url
-    elif [ "$credential_gcm" == true ]; then
-        # Preparo variables si la cuenta tiene credenciales vía GCM
-        # Obtengo valores "gratis", la URL de clonación y la de las credenciales
-        account_clone_url=$(echo "$account_url" | sed -E "s|https://(.*)|https://$account_username@\1|")
-        account_credential_url=$(echo "$account_url" | sed -E 's|(https://[^/]+).*|\1|')
-        remote_origin_url=$account_url
-    fi
 
     # Crear el directorio para la cuenta
     echo_message "  $account_folder"
@@ -619,6 +601,25 @@ for account in $accounts; do
 
         # Averiguo el tipo de credencial para el repositorio
         repo_credential_type=$(jq -r ".accounts[\"$account\"].repos[\"$repo\"].credential_type" "$git_config_repos_json_file")
+
+        # Preparo variables si el repo tiene credenciales vía SSH
+        if [[ "${repo_credential_type}" == "ssh" ]]; then
+            ssh_host=$(jq -r ".accounts[\"$account\"].ssh_host" "$git_config_repos_json_file")
+            account_ssh_type=$(jq -r ".accounts[\"$account\"].ssh_type" "$git_config_repos_json_file")
+            account_ssh_key="$ssh_folder/$ssh_host-sshkey"
+            # Extraigo el nombre de la cuenta de la URL, por ejemplo, para
+            # una url del tipo https://github.com/usuario, extraigo "usuario"
+            git_account_user=$(echo "$account_url" | sed -E 's|.*/([^/]+)$|\1|')
+            # Reconstruyo la URL de clonación usando el ssh_host y el usuario
+            account_clone_url="$ssh_host:$git_account_user"
+            remote_origin_url=$account_clone_url
+        elif [[ "${repo_credential_type}" == "gcm" ]]; then
+            # Preparo variables si la cuenta tiene credenciales vía GCM
+            # Obtengo valores "gratis", la URL de clonación y la de las credenciales
+            account_clone_url=$(echo "$account_url" | sed -E "s|https://(.*)|https://$account_username@\1|")
+            account_credential_url=$(echo "$account_url" | sed -E 's|(https://[^/]+).*|\1|')
+            remote_origin_url=$account_url
+        fi
 
         # Construyo la ruta del repositorio
         # Compruebo si este repo tiene la clave "folder" a su nivel, eso puede significar
