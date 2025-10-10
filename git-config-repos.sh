@@ -240,6 +240,23 @@ check_credential_in_store() {
     esac
 }
 
+# Función para comprobar si una cuenta tiene repositorios que utilizan credenciales GCM
+account_has_gcm_repos() {
+    local account="$1"
+
+    # Obtener todos los repositorios de esta cuenta y comprobar si alguno utiliza GCM
+    local repos=$(jq -r ".accounts[\"$account\"].repos | keys[]" "$git_config_repos_json_file")
+
+    for repo in $repos; do
+        local credential_type=$(jq -r ".accounts[\"$account\"].repos[\"$repo\"].credential_type" "$git_config_repos_json_file")
+        if [ "$credential_type" == "gcm" ]; then
+            return 0  # Se encontró al menos un repositorio que utiliza GCM
+        fi
+    done
+
+    return 1  # No se encontraron repositorios que utilicen GCM
+}
+
 # ----------------------------------------------------------------------------------------
 # Dependencias del Script
 # ----------------------------------------------------------------------------------------
@@ -435,36 +452,44 @@ if [ "$credential_gcm" == "true" ]; then
     # Iterar sobre las cuentas para los CREDENCIALES de GCM
     # En esta seccion se configuran las credenciales en el almacen de credenciales, mediante
     # el proceso de ir a la URL de la cuenta y autenticarse con el navegador
+    # Solo procesar cuentas que tienen al menos un repositorio usando GCM
     accounts=$(jq -r '.accounts | keys[]' "$git_config_repos_json_file")
     for account in $accounts; do
-        account_url=$(jq -r ".accounts[\"$account\"].url" "$git_config_repos_json_file")
-        account_username=$(jq -r ".accounts[\"$account\"].username" "$git_config_repos_json_file")
-        # Obtengo "gratis", la URL las credenciales desde account_url
-        account_credential_url=$(echo "$account_url" | sed -E 's|(https://[^/]+).*|\1|')
+        # Verificar si esta cuenta tiene repositorios que usan GCM
+        if account_has_gcm_repos "$account"; then
+            account_url=$(jq -r ".accounts[\"$account\"].url" "$git_config_repos_json_file")
+            account_username=$(jq -r ".accounts[\"$account\"].username" "$git_config_repos_json_file")
+            # Obtengo "gratis", la URL las credenciales desde account_url
+            account_credential_url=$(echo "$account_url" | sed -E 's|(https://[^/]+).*|\1|')
 
-        # Avisar al usuario para que prepare el navegador para que se autentique
-        echo_message "Comprobando credenciales de $account > $account_username"
-        check_credential_in_store "$account_credential_url" "$account_username"
-        if [ $? -eq 0 ]; then
-            echo_status ok
-        else
-            echo_status warning
-            read -p "Preapara tu navegador para autenticar a $account > $account_username - (Enter/Ctrl-C)." confirm
-            credenciales="/tmp/tmp-credenciales"
-            (
-                echo url="$account_credential_url"
-                echo "username=$account_username"
-                echo
-            ) | $git_command credential fill >$credenciales 2>/dev/null
-            if [ -f $credenciales ] && [ ! -s $credenciales ]; then
-                # No deberia entrar por aquí
-                echo "    Ya se habián configurado las credenciales en el pasado"
-                echo "$account/$username ya tiene los credenciales configurados en el almacen"
-            else
-                echo_message "    Añado las credenciales al almacen de credenciales"
-                cat $credenciales | $git_command credential approve
+            # Avisar al usuario para que prepare el navegador para que se autentique
+            echo_message "Comprobando credenciales de $account > $account_username"
+            check_credential_in_store "$account_credential_url" "$account_username"
+            if [ $? -eq 0 ]; then
                 echo_status ok
+            else
+                echo_status warning
+                read -p "Preapara tu navegador para autenticar a $account > $account_username - (Enter/Ctrl-C)." confirm
+                credenciales="/tmp/tmp-credenciales"
+                (
+                    echo url="$account_credential_url"
+                    echo "username=$account_username"
+                    echo
+                ) | $git_command credential fill >$credenciales 2>/dev/null
+                if [ -f $credenciales ] && [ ! -s $credenciales ]; then
+                    # No deberia entrar por aquí
+                    echo "    Ya se habián configurado las credenciales en el pasado"
+                    echo "$account/$username ya tiene los credenciales configurados en el almacen"
+                else
+                    echo_message "    Añado las credenciales al almacen de credenciales"
+                    cat $credenciales | $git_command credential approve
+                    echo_status ok
+                fi
             fi
+        else
+            # Esta cuenta no tiene repositorios usando GCM, saltarla
+            echo_message "Saltando $account (solo usa SSH)"
+            echo_status ok
         fi
     done
 fi
