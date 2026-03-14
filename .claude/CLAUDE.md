@@ -54,7 +54,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this repo is
 
-A collection of Bash and PowerShell scripts to manage Git multi-account environments across multiple Git providers (GitHub, GitLab, Gitea). It supports two authentication methods: HTTPS + Git Credential Manager (GCM) and SSH multi-account.
+A collection of Bash scripts to manage Git multi-account environments across multiple Git providers (GitHub, GitLab, Gitea). Supports two authentication methods: HTTPS + Git Credential Manager (GCM) and SSH multi-account. Compatible with Linux, macOS, WSL2, and Git Bash on Windows — all via `.sh` scripts, no platform-specific wrappers.
 
 ## Scripts
 
@@ -67,7 +67,14 @@ chmod +x git-config-repos.sh
 ./git-config-repos.sh
 ```
 
-**Dependencies:** `git`, `jq`. On WSL2: also `git.exe`, `cmd.exe`, `wslpath`, `git-credential-manager.exe`. On macOS/Linux with GCM: `git-credential-manager`.
+**Dependencies:**
+
+| Platform | Required |
+| -------- | -------- |
+| Linux | `git`, `jq`, `git-credential-manager` (if using GCM) |
+| macOS | `git`, `jq`, `git-credential-manager` |
+| WSL2 | `jq` (in WSL2), `git.exe` + `cmd.exe` + `git-credential-manager.exe` (Windows host) |
+| Git Bash | `git`, `jq.exe`, `git-credential-manager` (bundled with Git for Windows >= 2.39) |
 
 ### `git-status-pull.sh`
 Scans all `.git` directories from the current working directory and reports sync status with upstream. Can auto-pull if safe to do so.
@@ -79,41 +86,52 @@ Scans all `.git` directories from the current working directory and reports sync
 ./git-status-pull.sh -v pull  # Both
 ```
 
-### `git-status-pull.ps1`
-PowerShell equivalent of `git-status-pull.sh` for native Windows (not WSL2).
+## Platform detection
 
-```powershell
-.\git-status-pull.ps1           # Check status
-.\git-status-pull.ps1 -Pull     # Auto-pull where safe
-.\git-status-pull.ps1 -Verbose  # Verbose output
-```
+Both scripts share the same detection block, setting `PLATFORM` (`wsl2` | `gitbash` | `macos` | `linux`) and `cmdgit` (`git.exe` on WSL2, `git` elsewhere). Git Bash is detected first via `$MSYSTEM` before the `/proc/version` check.
 
 ## JSON configuration (`git-config-repos.json`)
 
 The file `git-config-repos.json` in this repo is an **annotated example** (it contains JS-style comments and must have them stripped before use). The actual config must be placed at:
-- Linux/macOS: `~/.config/git-config-repos/git-config-repos.json`
-- WSL2: `C:\Users\<user>\.config\git-config-repos\git-config-repos.json` (accessed as `/mnt/c/Users/<user>/...`)
+
+| Platform | Path |
+| -------- | ---- |
+| Linux / macOS / Git Bash | `~/.config/git-config-repos/git-config-repos.json` |
+| WSL2 | `/mnt/c/Users/<user>/.config/git-config-repos/git-config-repos.json` |
 
 ### JSON structure
-```
+
+```text
 global:
-  folder        - root directory for all git repos
-  credential_ssh.enabled / ssh_folder
-  credential_gcm.enabled / helper / credentialStore
+  folder          - root dir for all git repos (supports ~/path or absolute)
+  credential_ssh: enabled, ssh_folder (supports ~/path)
+  credential_gcm: enabled, helper, credentialStore
+                  (wincredman=Windows, keychain=macOS, secretservice=Linux)
 
 accounts.<AccountKey>:
-  url, username, folder, name, email
-  gcm_provider, gcm_useHttpPath   (for GCM)
-  ssh_host, ssh_hostname, ssh_type (for SSH)
+  url             - provider URL + user path; omit user path for cross-org clones
+  username, folder, name, email
+  gcm_provider, gcm_useHttpPath  (optional — skipped if absent)
+  ssh_host, ssh_hostname, ssh_type  (optional — required only if a repo uses ssh)
   repos.<RepoName>:
     credential_type: "gcm" | "ssh"
     name, email     (optional per-repo overrides)
-    folder          (optional: absolute path or relative to account folder)
+    folder          (optional: absolute or relative to account folder)
 ```
 
-## WSL2 specifics
+### Account patterns documented in the example config
 
-On WSL2, `git-config-repos.sh` uses `git.exe` (Windows Git) instead of Linux `git` to avoid WSL2 filesystem performance issues and to integrate with the Windows Credential Manager. Path conversions between WSL (`/mnt/c/...`) and Windows (`C:\...`) are handled internally via `convert_wsl_to_windows_path()`.
+- **Standard**: Gitea/GitHub with GCM or SSH
+- **Two accounts same server**: different user path in `url`
+- **Split account**: same org/username, different local `folder`
+- **Readonly / cross-org**: `url` without user path + repo name as `"org/repo"`
+- **Minimal account**: only required fields; `gcm_provider` and SSH fields are optional
+
+## Windows specifics
+
+**WSL2:** Uses `git.exe` (Windows Git) to integrate with Windows Credential Manager and avoid WSL2 filesystem slowness. Path conversion `/mnt/c/...` → `C:\...` is done internally via `convert_wsl_to_windows_path()` only at clone time.
+
+**Git Bash:** Uses native `git`. Paths stay in POSIX format throughout. Windows Credential Manager is accessed via `cmd.exe cmdkey`, same mechanism as WSL2.
 
 ## Credential types
 

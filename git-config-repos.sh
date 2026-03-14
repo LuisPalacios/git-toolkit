@@ -59,22 +59,35 @@
 trap ctrl_c INT
 
 # ----------------------------------------------------------------------------------------
+# Detección de plataforma — establece PLATFORM y cmdgit
+# PLATFORM: wsl2 | gitbash | macos | linux
+# ----------------------------------------------------------------------------------------
+PLATFORM="linux"
+cmdgit="git"
+
+if [[ -n "${MSYSTEM:-}" ]]; then
+    # Git Bash (MSYS2/MinGW): $MSYSTEM = MINGW64, MINGW32 o MSYS
+    PLATFORM="gitbash"
+elif [[ -r /proc/version ]] && grep -qEi "(Microsoft|WSL)" /proc/version 2>/dev/null; then
+    # WSL2
+    PLATFORM="wsl2"
+    cmdgit="git.exe"
+    # Para evitar warnings (cuando llamo a cmd.exe y git.exe) cambio a un
+    # directorio windows. Obtengo la ruta USERPROFILE de Windows y elimino
+    # el retorno de carro (\r).
+    USERPROFILE=$(wslpath "$(cmd.exe /c echo %USERPROFILE% 2>/dev/null | tr -d '\r')")
+    cd "$USERPROFILE"
+elif [[ "$OSTYPE" == darwin* ]]; then
+    # macOS
+    PLATFORM="macos"
+fi
+# else: Linux nativo — valores por defecto ya establecidos
+
+# ----------------------------------------------------------------------------------------
 # Variables Globales
 # ----------------------------------------------------------------------------------------
 credential_ssh="false"
 credential_gcm="true"
-
-# Averiguar si estamos en WSL2
-IS_WSL2=false
-if grep -qEi "(Microsoft|WSL)" /proc/version &>/dev/null; then
-    IS_WSL2=true
-    # Para evitar warnings (cuando llamo a cmd.exe y git.exe) cambio a un
-    # directorio windows. Obtengo la ruta USERPROFILE de Windows y elimino
-    # el retorno de carro (\r). Nota: Necesita instalar wslu (sudo apt install wslu)
-    USERPROFILE=$(wslpath "$(cmd.exe /c echo %USERPROFILE% 2>/dev/null | tr -d '\r')")
-    # Cambio al directorio típico del usuario C:\Users\<usuario>
-    cd $USERPROFILE
-fi
 
 # ----------------------------------------------------------------------------------------
 # Mostrar mensajes bonitos
@@ -201,41 +214,32 @@ wcm_search() {
     fi
 }
 
-# Función para comprobar la existencia de un comando
-check_command() {
-    if ! which "$1" >/dev/null; then
-        echo "Error: $1 no se encuentra en el PATH."
-        return 1
-    else
-        return 0
-    fi
-}
-
 # Function to check if a credential is stored in the credential manager
 check_credential_in_store() {
+    local service_url="$1"
+    local username="$2"
 
-    case "$OSTYPE" in
-    # MacOS
-    darwin* | freebsd*)
-        # OSX Keychain
-        security find-generic-password -s "git:$1" -a "$2" &>/dev/null
+    case "$PLATFORM" in
+    macos)
+        # macOS Keychain
+        security find-generic-password -s "git:${service_url}" -a "${username}" &>/dev/null
         return $?
         ;;
-    # Linux
+    wsl2 | gitbash)
+        # Windows Credential Manager (disponible tanto en WSL2 como en Git Bash)
+        wcm_search "git:${service_url}" "${username}"
+        return $?
+        ;;
     *)
-        if [ ${IS_WSL2} == true ]; then
-            # Windows Credential Manager
-            wcm_search "git:$1" "$2"
-            return $?
-        else
-            # Linux Secret Service
-            output=$(secret-tool search service "git:$1" account "$2" 2>/dev/null)
-            line_count=$(echo "$output" | wc -l)
-            if [ "$line_count" -gt 1 ]; then
-                return 0
-            fi
-            return 1
+        # Linux nativo — Secret Service
+        local output
+        output=$(secret-tool search service "git:${service_url}" account "${username}" 2>/dev/null)
+        local line_count
+        line_count=$(printf '%s' "$output" | wc -l)
+        if [ "$line_count" -gt 1 ]; then
+            return 0
         fi
+        return 1
         ;;
     esac
 }
@@ -263,115 +267,88 @@ account_has_gcm_repos() {
 
 # Comprobar si las dependencias necesarias están instaladas
 check_installed_programs() {
-    # PROGRAMAS que deben estar intalados
-    if [ ${IS_WSL2} == true ]; then
-        programs=("git" "jq" "wslpath" "git-credential-manager.exe")
-    else
-        if [ "$credential_gcm" == "true" ]; then
-            programs=("git" "jq" "git-credential-manager")
-        else
-            programs=("git" "jq")
-        fi
-    fi
+    local programs=("jq")
 
-    # Compruebo las dependencias
+    case "$PLATFORM" in
+    wsl2)
+        programs+=("wslpath" "cmd.exe" "git.exe")
+        [[ "$credential_gcm" == "true" ]] && programs+=("git-credential-manager.exe")
+        ;;
+    *)
+        programs+=("git")
+        [[ "$credential_gcm" == "true" ]] && programs+=("git-credential-manager")
+        ;;
+    esac
+
     for program in "${programs[@]}"; do
-        if ! command -v $program &>/dev/null; then
+        if ! command -v "$program" &>/dev/null; then
+            echo
+            echo "Error: '$program' no está instalado o no está en el PATH."
+            echo
+            echo "Instala las dependencias necesarias:"
+            echo
 
-            echo
-            echo "Error: $program no está instalado."
-            echo
-            echo "Hay una serie de dependencias que tienes que tener instaladas:"
-            echo
-
-            case "$OSTYPE" in
-            # MacOS
-            darwin* | freebsd*)
-                echo " macos:"
-                echo "       brew update && brew upgrade"
-                echo "       brew install jq git"
-                echo "       brew tap microsoft/git"
-                echo "       brew install --cask git-credential-manager-core"
+            case "$PLATFORM" in
+            wsl2)
+                echo " WSL2 (Ubuntu/Debian):"
+                echo "   sudo apt update && sudo apt install -y jq"
                 echo
+                echo "   Para cmd.exe y git.exe instala Git for Windows en el host Windows:"
+                echo "   https://git-scm.com/download/win"
+                echo "   Añade al PATH de WSL2 (~/.bashrc o ~/.profile):"
+                echo "     export PATH=\"\$PATH:/mnt/c/Windows/System32\""
+                echo "     export PATH=\"\$PATH:/mnt/c/Program Files/Git/mingw64/bin\""
+                echo
+                echo "   Para git-credential-manager.exe instala GCM para Windows:"
+                echo "   https://github.com/git-ecosystem/git-credential-manager/releases"
                 ;;
-            # Linux
+            gitbash)
+                echo " Git Bash (Windows):"
+                echo "   git y bash se incluyen con Git for Windows:"
+                echo "   https://git-scm.com/download/win"
+                echo
+                echo "   Para jq, descarga jq.exe y colócalo en un directorio del PATH:"
+                echo "   https://jqlang.github.io/jq/download/"
+                echo
+                echo "   git-credential-manager se incluye con Git for Windows >= 2.39:"
+                echo "   https://github.com/git-ecosystem/git-credential-manager/releases"
+                ;;
+            macos)
+                echo " macOS:"
+                echo "   brew update && brew upgrade"
+                echo "   brew install git jq"
+                echo "   brew install --cask git-credential-manager"
+                ;;
             *)
-                if [ ${IS_WSL2} == true ]; then
-                    echo " windows: Desde una sesión de WSL2"
-                    echo "       sudo apt update && sudo apt upgrade -y && sudo apt full-upgrade -y"
-                    echo "       sudo apt install -y jq git"
-                    echo
-                    echo " Asegúrate de tener instalador el Git Credential Manager para Windows"
-                    echo " https://github.com/git-ecosystem/git-credential-manager/releases"
-                    echo
-                    echo
-                else
-                    echo " linux:"
-                    echo "       sudo apt update && sudo apt upgrade -y && sudo apt full-upgrade -y"
-                    echo "       sudo apt install -y jq git"
-                    echo
-                    echo " Asegúrate de tener instalador el Git Credential Manager para Linux"
-                    echo " https://github.com/git-ecosystem/git-credential-manager/releases"
-                    echo " Ejemplo: sudo dpkg -i gcm-linux_amd64.2.5.1.deb"
-                fi
+                echo " Linux:"
+                echo "   sudo apt update && sudo apt install -y git jq"
+                echo
+                echo "   Para git-credential-manager:"
+                echo "   https://github.com/git-ecosystem/git-credential-manager/releases"
+                echo "   Ejemplo: sudo dpkg -i gcm-linux_amd64.2.5.1.deb"
                 ;;
             esac
+
+            echo
             exit 1
         fi
     done
 }
 
-# En WSL2 comprobar si cmd.exe y git.exe están en el PATH
-# Nota, en WSL2 uso git.exe en vez de git de ubuntu porque es compatible con
-# el Credential Manager de Windows
-if [ ${IS_WSL2} == true ]; then
-    # Comprobar cmd.exe
-    check_command "cmd.exe"
-    cmd_status=$?
-
-    # Comprobar git.exe
-    check_command "git.exe"
-    git_status=$?
-
-    # Sugerencias para añadir al PATH si no se encuentran
-    if [ $cmd_status -ne 0 ] || [ $git_status -ne 0 ]; then
-        echo ""
-        echo "Añade al PATH:"
-
-        if [ $cmd_status -ne 0 ]; then
-            echo "  - /mnt/c/Windows/System32 (para cmd.exe)"
-        fi
-
-        if [ $git_status -ne 0 ]; then
-            echo "  - /mnt/c/Program Files/Git/mingw64/bin (para git.exe)"
-            echo "Te recomiendo que instales Git for Windows desde https://git-scm.com/download/win"
-        fi
-
-        echo "Para hacerlo permanente, añádelo a ~/.zshrc, ~/.bashrc o ~/.profile."
-        exit 1
-    fi
-fi
-
 # ----------------------------------------------------------------------------------------
 # Main Script Execution
 # ----------------------------------------------------------------------------------------
 
-# Ficheros de configuración
-if [ ${IS_WSL2} == true ]; then
-    # En WSL2 uso git.exe
-    git_command="git.exe"
-    # En WSL2 trabajo sobre el disco de Windows
-    #git_global_config_file="/mnt/c/Users/${USER}/.gitconfig"
-    # Cargar y parsear el archivo JSON usando jq
+# Fichero de configuración JSON
+case "$PLATFORM" in
+wsl2)
     git_config_repos_json_file="/mnt/c/Users/${USER}/.config/git-config-repos/git-config-repos.json"
-else
-    # En Mac y Linux el comando git es git
-    git_command="git"
-    # En Mac y Linux el home del usuario
-    #git_global_config_file="${HOME}/.gitconfig"
-    # Cargar y parsear el archivo JSON usando jq
-    git_config_repos_json_file="$HOME/.config/git-config-repos/git-config-repos.json"
-fi
+    ;;
+*)
+    git_config_repos_json_file="${HOME}/.config/git-config-repos/git-config-repos.json"
+    ;;
+esac
+git_command="$cmdgit"
 echo_message "* Config $git_config_repos_json_file"
 if [ ! -f "$git_config_repos_json_file" ]; then
     echo_status error
@@ -391,8 +368,10 @@ echo_status ok
 # GLOBAL
 # Extraer configuración global del JSON
 global_folder=$(jq -r '.global.folder' "$git_config_repos_json_file")
+global_folder="${global_folder/#\~/$HOME}"       # expandir ~/... a $HOME/...
 credential_ssh=$(jq -r '.global.credential_ssh.enabled' "$git_config_repos_json_file")
 ssh_folder=$(jq -r '.global.credential_ssh.ssh_folder' "$git_config_repos_json_file")
+ssh_folder="${ssh_folder/#\~/$HOME}"             # expandir ~/... a $HOME/...
 credential_gcm=$(jq -r '.global.credential_gcm.enabled' "$git_config_repos_json_file")
 credential_helper=$(jq -r '.global.credential_gcm.helper' "$git_config_repos_json_file")
 credential_store=$(jq -r '.global.credential_gcm.credentialStore' "$git_config_repos_json_file")
@@ -415,7 +394,7 @@ echo_status ok
 
 # DIRECTORIO SSH
 # Crear el directorio global de Git
-if [ "$credential_ssh" == true ]; then
+if [ "$credential_ssh" == "true" ]; then
     echo_message "Directorio SSH: $ssh_folder"
     mkdir -p "$ssh_folder" &>/dev/null
     if [ $? -ne 0 ]; then
@@ -442,9 +421,11 @@ if [ "$credential_gcm" == "true" ]; then
         account_gcm_useHttpPath=$(jq -r ".accounts[\"$account\"].gcm_useHttpPath" "$git_config_repos_json_file")
         # Obtengo "gratis", la URL las credenciales desde account_url
         account_credential_url=$(echo "$account_url" | sed -E 's|(https://[^/]+).*|\1|')
-        # Configurar las credenciales globales para la cuenta
-        $git_command config --global credential."$account_credential_url".provider "$account_gcm_provider"
-        $git_command config --global credential."$account_credential_url".useHttpPath "$account_gcm_useHttpPath"
+        # Configurar las credenciales globales para la cuenta (solo si el campo existe en el JSON)
+        [[ "$account_gcm_provider" != "null" ]] && \
+            $git_command config --global credential."$account_credential_url".provider "$account_gcm_provider"
+        [[ "$account_gcm_useHttpPath" != "null" ]] && \
+            $git_command config --global credential."$account_credential_url".useHttpPath "$account_gcm_useHttpPath"
     done
     echo_status ok
 
@@ -497,7 +478,7 @@ fi
 # CONFIGURACIÓN GLOBAL de SSH
 # --
 # Para SSH configuro las Keys
-if [ "$credential_ssh" == true ]; then
+if [ "$credential_ssh" == "true" ]; then
 
     ssh_config_file="$ssh_folder/config"
     git_config_comment="# Configuración para git-config-repos.sh"
@@ -579,7 +560,7 @@ if [ "$credential_ssh" == true ]; then
     ssh-add -D &>/dev/null
     for account in $accounts; do
         ssh_host=$(jq -r ".accounts[\"$account\"].ssh_host" "$git_config_repos_json_file")
-        account_ssh_key="$ssh_folder/$ssh_key-sshkey"
+        account_ssh_key="$ssh_folder/$ssh_host-sshkey"
         echo_message "Añadiendo clave SSH a ssh-agent para $account"
         ssh-add "$account_ssh_key" &>/dev/null
         echo_status ok
@@ -668,12 +649,15 @@ for account in $accounts; do
             echo "   - $repo_path"
             echo_message "    ⬇ $repo_path"
 
-            # Si estamos en WSL2 convertir la ruta de destino del clone a formato C:\..
-            if [ ${IS_WSL2} == true ]; then
-                destination_directory=$(convert_wsl_to_windows_path $repo_path) # En WSL2
-            else
-                destination_directory=$repo_path # En Mac y Linux
-            fi
+            # En WSL2 convertir la ruta de destino del clone a formato C:\.. para git.exe
+            case "$PLATFORM" in
+            wsl2)
+                destination_directory=$(convert_wsl_to_windows_path "$repo_path")
+                ;;
+            *)
+                destination_directory="$repo_path"
+                ;;
+            esac
 
             # Clonar el repo
             $git_command clone "$account_clone_url/$repo.git" "$destination_directory" &>/dev/null
@@ -699,7 +683,7 @@ for account in $accounts; do
         if [ "$account_user_email" != "" ] && [ "$account_user_email" != "null" ]; then
             $git_command config user.email "$account_user_email"
         fi
-        if  [ "$credential_gcm" == true ]; then
+        if [ "$credential_gcm" == "true" ]; then
             $git_command config credential."$account_credential_url".username "$account_username"
         fi
 

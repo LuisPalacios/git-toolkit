@@ -18,13 +18,25 @@
 # (-v) para dar dicha informacion más detallada
 #
 
-# Compruebo si estoy bajo WSL2
-IS_WSL2=false
+# ----------------------------------------------------------------------------------------
+# Detección de plataforma — establece PLATFORM y cmdgit
+# PLATFORM: wsl2 | gitbash | macos | linux
+# ----------------------------------------------------------------------------------------
+PLATFORM="linux"
 cmdgit="git"
-if grep -qEi "(Microsoft|WSL)" /proc/version &>/dev/null; then
-    IS_WSL2=true
+
+if [[ -n "${MSYSTEM:-}" ]]; then
+    # Git Bash (MSYS2/MinGW): $MSYSTEM = MINGW64, MINGW32 o MSYS
+    PLATFORM="gitbash"
+elif [[ -r /proc/version ]] && grep -qEi "(Microsoft|WSL)" /proc/version 2>/dev/null; then
+    # WSL2
+    PLATFORM="wsl2"
     cmdgit="git.exe"
+elif [[ "$OSTYPE" == darwin* ]]; then
+    # macOS
+    PLATFORM="macos"
 fi
+# else: Linux nativo — valores por defecto ya establecidos
 
 #
 # Variables globales
@@ -189,9 +201,9 @@ check_if_behind_main() {
         for main_branch in "main" "master"; do
             if $cmdgit show-ref --verify --quiet refs/heads/$main_branch; then
                 # Obtener la fecha del último commit en la rama 'main' o 'master'
-                MAIN_COMMIT_DATE=$(git log -1 --format=%ct origin/$main_branch)
+                MAIN_COMMIT_DATE=$($cmdgit log -1 --format=%ct "origin/$main_branch")
                 # Obtener la fecha del último commit en la rama actual
-                BRANCH_COMMIT_DATE=$(git log -1 --format=%ct $current_branch)
+                BRANCH_COMMIT_DATE=$($cmdgit log -1 --format=%ct "$current_branch")
                 # Comparar las fechas
                 if [ "$BRANCH_COMMIT_DATE" -lt "$MAIN_COMMIT_DATE" ]; then
                     #echo "El último commit en la rama 'feature' es más antiguo que el de 'main'."
