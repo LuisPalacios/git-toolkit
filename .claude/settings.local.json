@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(bash -n /c/Users/luis/00.git/02.github-luispa/git-config-repos/git-config-repos.sh)"
+    ]
+  }
+}
