@@ -239,11 +239,6 @@ function ctrl_c() {
 # Función para convertir una ruta de WSL a una ruta de Windows
 # Si no se puede convertir se sale del programa porque se considera
 # un error en la configuración del archivo JSON y es grave
-#
-# Ejemplo de uso
-# windos_global_folder=$(convert_wsl_to_windows_path $global_folder)
-#
-#
 convert_wsl_to_windows_path() {
     local wsl_path="$1"
 
@@ -265,6 +260,15 @@ convert_wsl_to_windows_path() {
         echo "Revisa global.folder en el .json, asegúrate de que comience con /mnt/<unidad>/"
         exit 1
     fi
+}
+
+# Extraer protocolo://host de una URL (sin sed, puro bash)
+url_credential_base() {
+    local url="$1"
+    local proto="${url%%://*}"
+    local rest="${url#*://}"
+    local host="${rest%%/*}"
+    echo "${proto}://${host}"
 }
 
 # Cache de credenciales de Windows Credential Manager (se llena una sola vez)
@@ -445,7 +449,8 @@ echo_status ok
 
 # ----------------------------------------------------------------------------------------
 # Carga masiva de datos del JSON (3 llamadas a jq en lugar de ~50+)
-# Esto acelera drásticamente la ejecución en Git Bash donde cada proceso cuesta ~200ms
+# Los datos se almacenan como cadenas TSV y se iteran con "while read".
+# Compatible con Bash 3.2+ (macOS) — no usa arrays asociativos.
 # ----------------------------------------------------------------------------------------
 
 # 1) Configuración global (1 llamada a jq)
@@ -470,28 +475,8 @@ else
     ssh_folder="${ssh_folder/#\~/$HOME}"
 fi
 
-# 2) Datos de cuentas (1 llamada a jq)
-declare -a ACCOUNT_KEYS=()
-declare -A ACCT_URL ACCT_USERNAME ACCT_FOLDER ACCT_NAME ACCT_EMAIL
-declare -A ACCT_GCM_PROVIDER ACCT_GCM_USEHTTPPATH
-declare -A ACCT_SSH_HOST ACCT_SSH_HOSTNAME ACCT_SSH_TYPE
-declare -A ACCT_HAS_GCM
-declare -A ACCT_REPO_KEYS
-
-while IFS=$'\t' read -r _key _url _username _folder _name _email _gcm_provider _gcm_useHttpPath _ssh_host _ssh_hostname _ssh_type; do
-    ACCOUNT_KEYS+=("$_key")
-    ACCT_URL[$_key]="$_url"
-    ACCT_USERNAME[$_key]="$_username"
-    ACCT_FOLDER[$_key]="$_folder"
-    ACCT_NAME[$_key]="$_name"
-    ACCT_EMAIL[$_key]="$_email"
-    ACCT_GCM_PROVIDER[$_key]="$_gcm_provider"
-    ACCT_GCM_USEHTTPPATH[$_key]="$_gcm_useHttpPath"
-    ACCT_SSH_HOST[$_key]="$_ssh_host"
-    ACCT_SSH_HOSTNAME[$_key]="$_ssh_hostname"
-    ACCT_SSH_TYPE[$_key]="$_ssh_type"
-    ACCT_HAS_GCM[$_key]="false"
-done < <(jq -r '.accounts | to_entries | sort_by(.key)[] | [
+# 2) Datos de cuentas — TSV: key url username folder name email gcm_provider gcm_useHttpPath ssh_host ssh_hostname ssh_type
+_acct_data=$(jq -r '.accounts | to_entries | sort_by(.key)[] | [
     .key,
     (.value.url // "null"),
     (.value.username // "null"),
@@ -505,19 +490,8 @@ done < <(jq -r '.accounts | to_entries | sort_by(.key)[] | [
     (.value.ssh_type // "null")
 ] | @tsv' "$git_config_repos_json_file")
 
-# 3) Datos de repositorios (1 llamada a jq)
-declare -A REPO_CRED_TYPE REPO_NAME REPO_EMAIL REPO_FOLDER
-
-while IFS=$'\t' read -r _acc _repo _cred_type _name _email _folder; do
-    REPO_CRED_TYPE["$_acc/$_repo"]="$_cred_type"
-    REPO_NAME["$_acc/$_repo"]="$_name"
-    REPO_EMAIL["$_acc/$_repo"]="$_email"
-    REPO_FOLDER["$_acc/$_repo"]="$_folder"
-    ACCT_REPO_KEYS[$_acc]+="$_repo "
-    if [[ "$_cred_type" == "gcm" ]]; then
-        ACCT_HAS_GCM[$_acc]="true"
-    fi
-done < <(jq -r '.accounts | to_entries | sort_by(.key)[] | .key as $acc |
+# 3) Datos de repositorios — TSV: account_key repo_key credential_type name email folder
+_repo_data=$(jq -r '.accounts | to_entries | sort_by(.key)[] | .key as $acc |
     (.value.repos // {} | to_entries | sort_by(.key)[]) | [
         $acc,
         .key,
@@ -526,6 +500,13 @@ done < <(jq -r '.accounts | to_entries | sort_by(.key)[] | .key as $acc |
         (.value.email // "null"),
         (.value.folder // "null")
     ] | @tsv' "$git_config_repos_json_file")
+
+# Precalcular qué cuentas tienen repos con GCM (cadena con delimitadores para búsqueda bash puro)
+_gcm_accounts="|"
+while IFS=$'\t' read -r _acc _repo _ctype _rname _remail _rfolder; do
+    [[ -z "$_acc" ]] && continue
+    [[ "$_ctype" == "gcm" && "$_gcm_accounts" != *"|${_acc}|"* ]] && _gcm_accounts+="|${_acc}|"
+done <<< "$_repo_data"
 
 #
 # COMPROBAR PROGRAMAS INSTALADOS
@@ -544,7 +525,6 @@ fi
 echo_status ok
 
 # DIRECTORIO SSH
-# Crear el directorio global de Git
 if [ "$credential_ssh" == "true" ]; then
     echo_message "Directorio SSH: $ssh_folder"
     run mkdir -p "$ssh_folder" &>/dev/null
@@ -564,21 +544,15 @@ if [ "$credential_gcm" == "true" ]; then
     echo_message "Configuración de Git global"
     run $git_command config --global --replace-all credential.helper "$credential_helper"
     run $git_command config --global credential.credentialStore "$credential_store"
-    for account in "${ACCOUNT_KEYS[@]}"; do
-        account_url="${ACCT_URL[$account]}"
-        account_gcm_provider="${ACCT_GCM_PROVIDER[$account]}"
-        account_gcm_useHttpPath="${ACCT_GCM_USEHTTPPATH[$account]}"
-        # Obtengo "gratis", la URL las credenciales desde account_url
-        account_credential_url="${account_url%%//*}//${account_url#*//}"
-        account_credential_url="${account_credential_url%%/*}"
-        # Reconstruir: protocolo + host
-        account_credential_url=$(echo "$account_url" | sed -E 's|(https://[^/]+).*|\1|')
+    while IFS=$'\t' read -r _key _url _username _folder _name _email _gcm_provider _gcm_useHttpPath _ssh_host _ssh_hostname _ssh_type; do
+        [[ -z "$_key" ]] && continue
+        account_credential_url=$(url_credential_base "$_url")
         # Configurar las credenciales globales para la cuenta (solo si el campo existe en el JSON)
-        [[ "$account_gcm_provider" != "null" ]] && \
-            run $git_command config --global credential."$account_credential_url".provider "$account_gcm_provider"
-        [[ "$account_gcm_useHttpPath" != "null" ]] && \
-            run $git_command config --global credential."$account_credential_url".useHttpPath "$account_gcm_useHttpPath"
-    done
+        [[ "$_gcm_provider" != "null" ]] && \
+            run $git_command config --global credential."$account_credential_url".provider "$_gcm_provider"
+        [[ "$_gcm_useHttpPath" != "null" ]] && \
+            run $git_command config --global credential."$account_credential_url".useHttpPath "$_gcm_useHttpPath"
+    done <<< "$_acct_data"
     echo_status ok
 
     # CREDENCIALES
@@ -586,35 +560,33 @@ if [ "$credential_gcm" == "true" ]; then
     # En esta seccion se configuran las credenciales en el almacen de credenciales, mediante
     # el proceso de ir a la URL de la cuenta y autenticarse con el navegador
     # Solo procesar cuentas que tienen al menos un repositorio usando GCM
-    for account in "${ACCOUNT_KEYS[@]}"; do
+    while IFS=$'\t' read -r _key _url _username _folder _name _email _gcm_provider _gcm_useHttpPath _ssh_host _ssh_hostname _ssh_type; do
+        [[ -z "$_key" ]] && continue
         # Verificar si esta cuenta tiene repositorios que usan GCM
-        if [[ "${ACCT_HAS_GCM[$account]}" == "true" ]]; then
-            account_url="${ACCT_URL[$account]}"
-            account_username="${ACCT_USERNAME[$account]}"
-            # Obtengo "gratis", la URL las credenciales desde account_url
-            account_credential_url=$(echo "$account_url" | sed -E 's|(https://[^/]+).*|\1|')
+        if [[ "$_gcm_accounts" == *"|${_key}|"* ]]; then
+            account_credential_url=$(url_credential_base "$_url")
 
             # Avisar al usuario para que prepare el navegador para que se autentique
-            echo_message "Comprobando credenciales de $account > $account_username"
-            check_credential_in_store "$account_credential_url" "$account_username"
+            echo_message "Comprobando credenciales de $_key > $_username"
+            check_credential_in_store "$account_credential_url" "$_username"
             if [ $? -eq 0 ]; then
                 echo_status ok
             elif [ "$DRY_RUN" = true ]; then
                 echo_status warning
-                echo "  [dry-run] Solicitaría autenticación de $account > $account_username"
+                echo "  [dry-run] Solicitaría autenticación de $_key > $_username"
             else
                 echo_status warning
-                read -p "Preapara tu navegador para autenticar a $account > $account_username - (Enter/Ctrl-C)." confirm
+                read -p "Preapara tu navegador para autenticar a $_key > $_username - (Enter/Ctrl-C)." confirm
                 credenciales="/tmp/tmp-credenciales"
                 (
                     echo url="$account_credential_url"
-                    echo "username=$account_username"
+                    echo "username=$_username"
                     echo
                 ) | $git_command credential fill >$credenciales 2>/dev/null
                 if [ -f $credenciales ] && [ ! -s $credenciales ]; then
                     # No deberia entrar por aquí
-                    echo "    Ya se habián configurado las credenciales en el pasado"
-                    echo "$account/$username ya tiene los credenciales configurados en el almacen"
+                    echo "    Ya se habían configurado las credenciales en el pasado"
+                    echo "$_key/$_username ya tiene los credenciales configurados en el almacen"
                 else
                     echo_message "    Añado las credenciales al almacen de credenciales"
                     cat $credenciales | $git_command credential approve
@@ -623,10 +595,10 @@ if [ "$credential_gcm" == "true" ]; then
             fi
         else
             # Esta cuenta no tiene repositorios usando GCM, saltarla
-            echo_message "Saltando $account (solo usa SSH)"
+            echo_message "Saltando $_key (solo usa SSH)"
             echo_status ok
         fi
-    done
+    done <<< "$_acct_data"
 fi
 
 # CONFIGURACIÓN GLOBAL de SSH
@@ -667,45 +639,39 @@ if [ "$credential_ssh" == "true" ]; then
     else
         echo "# Configuración para git-config-repos.sh" > "$ssh_config_file_git_config_repos"
     fi
-    for account in "${ACCOUNT_KEYS[@]}"; do
-        echo_message "Claves SSH para $account"
+    while IFS=$'\t' read -r _key _url _username _folder _name _email _gcm_provider _gcm_useHttpPath _ssh_host _ssh_hostname _ssh_type; do
+        [[ -z "$_key" ]] && continue
+        echo_message "Claves SSH para $_key"
 
-        # Extraer los valores de la cuenta desde los arrays
-        ssh_host="${ACCT_SSH_HOST[$account]}"
-        if [ "$ssh_host" == "" ] || [ "$ssh_host" == "null" ]; then
-            echo "Error: La cuenta $account no tiene definida el prefijo del nombre de clave SSH (ssh_host)."
+        if [ "$_ssh_host" == "" ] || [ "$_ssh_host" == "null" ]; then
+            echo "Error: La cuenta $_key no tiene definida el prefijo del nombre de clave SSH (ssh_host)."
             echo_status error
             exit 1
         fi
-        ssh_hostname="${ACCT_SSH_HOSTNAME[$account]}"
-        if [ "$ssh_hostname" == "" ] || [ "$ssh_hostname" == "null" ]; then
-            echo "Error: La cuenta $account no tiene definida el Hostname SSH (ssh_hostname)."
+        if [ "$_ssh_hostname" == "" ] || [ "$_ssh_hostname" == "null" ]; then
+            echo "Error: La cuenta $_key no tiene definida el Hostname SSH (ssh_hostname)."
             echo_status error
             exit 1
         fi
-        account_ssh_type="${ACCT_SSH_TYPE[$account]}"
-        if [ "$account_ssh_type" == "" ] || [ "$account_ssh_type" == "null" ]; then
+        if [ "$_ssh_type" == "" ] || [ "$_ssh_type" == "null" ]; then
             echo_status error
-            echo "Error: La cuenta $account no tiene definido el tipo de clave SSH (ssh_type)."
+            echo "Error: La cuenta $_key no tiene definido el tipo de clave SSH (ssh_type)."
             exit 1
         fi
-        account_ssh_key="$ssh_folder/$ssh_host-sshkey"
+        account_ssh_key="$ssh_folder/$_ssh_host-sshkey"
 
         # Comprobar si la clave SSH existe, si no, crearla
         if [ ! -f "$account_ssh_key" ] || [ ! -f "$account_ssh_key.pub" ]; then
             if [ "$DRY_RUN" = true ]; then
                 echo_status warning
-                echo "  [dry-run] Generaría clave SSH $account_ssh_key ($account_ssh_type)"
+                echo "  [dry-run] Generaría clave SSH $account_ssh_key ($_ssh_type)"
             else
-                # Intentar generar la clave SSH y capturar errores
-                account_url="${ACCT_URL[$account]}"
-                account_username="${ACCT_USERNAME[$account]}"
-                account_ssh_comment="$(whoami)@$(hostname) $account_username $account_url"
-                if $(echo "y" | ssh-keygen -q -t "$account_ssh_type" -f "$account_ssh_key" -C "$account_ssh_comment" -N "" &>/dev/null); then
+                account_ssh_comment="$(whoami)@$(hostname) $_username $_url"
+                if $(echo "y" | ssh-keygen -q -t "$_ssh_type" -f "$account_ssh_key" -C "$account_ssh_comment" -N "" &>/dev/null); then
                     echo_status created
                 else
                     echo_status error
-                    echo "Error creando la clave SSH para $account" >&2
+                    echo "Error creando la clave SSH para $_key" >&2
                     exit 1
                 fi
             fi
@@ -713,48 +679,48 @@ if [ "$credential_ssh" == "true" ]; then
             echo_status ok
         fi
 
-        # Añadir el host al fichero de configuración SSH git-config-repos, ejemplo
-        echo_message "Configuración Host SSH para $account"
+        # Añadir el host al fichero de configuración SSH git-config-repos
+        echo_message "Configuración Host SSH para $_key"
         if [ "$DRY_RUN" = true ]; then
             echo_status ok
-            echo "  [dry-run] Añadiría Host $ssh_host → $ssh_hostname en $ssh_config_file_git_config_repos"
+            echo "  [dry-run] Añadiría Host $_ssh_host → $_ssh_hostname en $ssh_config_file_git_config_repos"
         else
-            echo "Host $ssh_host" >>"$ssh_config_file_git_config_repos"
-            echo "    HostName $ssh_hostname" >>"$ssh_config_file_git_config_repos"
+            echo "Host $_ssh_host" >>"$ssh_config_file_git_config_repos"
+            echo "    HostName $_ssh_hostname" >>"$ssh_config_file_git_config_repos"
             echo "    User git" >>"$ssh_config_file_git_config_repos"
             echo "    IdentityFile $account_ssh_key" >>"$ssh_config_file_git_config_repos"
             echo "    IdentitiesOnly yes" >>"$ssh_config_file_git_config_repos"
             echo_status ok
         fi
-    done
+    done <<< "$_acct_data"
 
     # Añadirlas al ssh-agent
     if [ "$DRY_RUN" = true ]; then
         echo "  [dry-run] Recargaría claves SSH en ssh-agent"
     else
         ssh-add -D &>/dev/null
-        for account in "${ACCOUNT_KEYS[@]}"; do
-            ssh_host="${ACCT_SSH_HOST[$account]}"
-            account_ssh_key="$ssh_folder/$ssh_host-sshkey"
-            echo_message "Añadiendo clave SSH a ssh-agent para $account"
+        while IFS=$'\t' read -r _key _url _username _folder _name _email _gcm_provider _gcm_useHttpPath _ssh_host _ssh_hostname _ssh_type; do
+            [[ -z "$_key" ]] && continue
+            account_ssh_key="$ssh_folder/$_ssh_host-sshkey"
+            echo_message "Añadiendo clave SSH a ssh-agent para $_key"
             ssh-add "$account_ssh_key" &>/dev/null
             echo_status ok
-        done
+        done <<< "$_acct_data"
     fi
 fi
 
 # REPOSITORIOS
 # Iterar sobre las cuentas para los REPOSITORIOS
 # En esta sección se clonan los repositorios y se configuran los repositorios locales
-for account in "${ACCOUNT_KEYS[@]}"; do
+while IFS=$'\t' read -r _key _url _username _folder _name _email _gcm_provider _gcm_useHttpPath _ssh_host _ssh_hostname _ssh_type; do
+    [[ -z "$_key" ]] && continue
 
-    # Extraer los valores de la cuenta desde los arrays
-    account_url="${ACCT_URL[$account]}"
-    account_username="${ACCT_USERNAME[$account]}"
-    account_folder="${ACCT_FOLDER[$account]}"
-    account_user_name="${ACCT_NAME[$account]}"
-    account_user_email="${ACCT_EMAIL[$account]}"
-
+    account="$_key"
+    account_url="$_url"
+    account_username="$_username"
+    account_folder="$_folder"
+    account_user_name="$_name"
+    account_user_email="$_email"
 
     # Crear el directorio para la cuenta
     echo_message "  $account_folder"
@@ -767,55 +733,51 @@ for account in "${ACCOUNT_KEYS[@]}"; do
     echo_status ok
 
     # Iterar sobre los repositorios de la cuenta
-    for repo in ${ACCT_REPO_KEYS[$account]}; do
+    while IFS=$'\t' read -r _racc _repo _cred_type _rname _remail _rfolder; do
+        [[ -z "$_racc" ]] && continue
+        [[ "$_racc" != "$account" ]] && continue
 
         # Si tengo nombre y email del usuario a nivel de repositorio, los pillo
-        repo_name="${REPO_NAME[$account/$repo]}"
-        if [ "$repo_name" != "" ] && [ "$repo_name" != "null" ]; then
-            account_user_name=$repo_name
+        if [ "$_rname" != "" ] && [ "$_rname" != "null" ]; then
+            account_user_name="$_rname"
+        else
+            account_user_name="$_name"
         fi
-        repo_email="${REPO_EMAIL[$account/$repo]}"
-        if [ "$repo_email" != "" ] && [ "$repo_email" != "null" ]; then
-            account_user_email=$repo_email
+        if [ "$_remail" != "" ] && [ "$_remail" != "null" ]; then
+            account_user_email="$_remail"
+        else
+            account_user_email="$_email"
         fi
 
         # Averiguo el tipo de credencial para el repositorio
-        repo_credential_type="${REPO_CRED_TYPE[$account/$repo]}"
+        repo_credential_type="$_cred_type"
 
         # Preparo variables si el repo tiene credenciales vía SSH
         if [[ "${repo_credential_type}" == "ssh" ]]; then
-            ssh_host="${ACCT_SSH_HOST[$account]}"
-            account_ssh_type="${ACCT_SSH_TYPE[$account]}"
+            ssh_host="$_ssh_host"
             account_ssh_key="$ssh_folder/$ssh_host-sshkey"
-            # Extraigo el nombre de la cuenta de la URL, por ejemplo, para
-            # una url del tipo https://github.com/usuario, extraigo "usuario"
+            # Extraigo el nombre de la cuenta de la URL
             git_account_user="${account_url##*/}"
             # Reconstruyo la URL de clonación usando el ssh_host y el usuario
             account_clone_url="$ssh_host:$git_account_user"
             remote_origin_url=$account_clone_url
         elif [[ "${repo_credential_type}" == "gcm" ]]; then
             # Preparo variables si la cuenta tiene credenciales vía GCM
-            # Obtengo valores "gratis", la URL de clonación y la de las credenciales
-            account_clone_url=$(echo "$account_url" | sed -E "s|https://(.*)|https://$account_username@\1|")
-            account_credential_url=$(echo "$account_url" | sed -E 's|(https://[^/]+).*|\1|')
+            account_clone_url="https://${account_username}@${account_url#https://}"
+            account_credential_url=$(url_credential_base "$account_url")
             remote_origin_url=$account_url
         fi
 
         # Construyo la ruta del repositorio
-        # Compruebo si este repo tiene la clave "folder" a su nivel, eso puede significar
-        # que el usuario quiere que se clone sobre un nombre de folder distinto al
-        # nombre del repositorio.
-        repo_folder="${REPO_FOLDER[$account/$repo]}"
+        repo_folder="$_rfolder"
         if [ "$repo_folder" != "" ] && [ "$repo_folder" != "null" ]; then
-            # Si $repo_folder empieza por /, es una ruta absoluta, por lo que la pongo
-            # como tal, si no, la pongo como relativa al directorio de la cuenta
             if [ "${repo_folder:0:1}" == "/" ]; then
                 repo_path="$repo_folder"
             else
                 repo_path="$global_folder/$account_folder/$repo_folder"
             fi
         else
-            repo_path="$global_folder/$account_folder/$repo"
+            repo_path="$global_folder/$account_folder/$_repo"
         fi
 
         # Si el repositorio no existe, clonarlo
@@ -834,7 +796,7 @@ for account in "${ACCOUNT_KEYS[@]}"; do
             esac
 
             # Clonar el repo
-            run $git_command clone "$account_clone_url/$repo.git" "$destination_directory" &>/dev/null
+            run $git_command clone "$account_clone_url/$_repo.git" "$destination_directory" &>/dev/null
             if [ $? -eq 0 ] || [ "$DRY_RUN" = true ]; then
                 echo_status ok
             else
@@ -856,8 +818,8 @@ for account in "${ACCOUNT_KEYS[@]}"; do
             fi
         else
             cd "$repo_path" || continue
-            $git_command remote set-url origin "$remote_origin_url/$repo.git"
-            $git_command remote set-url --push origin "$remote_origin_url/$repo.git"
+            $git_command remote set-url origin "$remote_origin_url/$_repo.git"
+            $git_command remote set-url --push origin "$remote_origin_url/$_repo.git"
             if [ "$account_user_name" != "" ] && [ "$account_user_name" != "null" ]; then
                 $git_command config user.name "$account_user_name"
             fi
@@ -869,7 +831,7 @@ for account in "${ACCOUNT_KEYS[@]}"; do
             fi
         fi
 
-    done
-done
+    done <<< "$_repo_data"
+done <<< "$_acct_data"
 
 # ----------------------------------------------------------------------------------------
