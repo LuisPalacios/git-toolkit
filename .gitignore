@@ -1,0 +1,27 @@
+# Build directories
+build/
+__cmake_systeminformation/
+
+# IDE
+.vs/
+.vscode/
+*.suo
+*.user
+*.sln
+*.vcxproj*
+
+# OS
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+# Compiled
+*.exe
+*.obj
+*.o
+*.a
+*.lib
+*.dll
+*.dylib
+*.so
