@@ -65,7 +65,7 @@ Si se proporciona el argumento `pull`, el script puede hacer pull automáticamen
 
 ## Patrones de configuración soportados
 
-El fichero `git-config-repos.json` incluido en este repositorio es una **plantilla comentada** con ejemplos de todos los patrones posibles:
+El fichero `git-config-repos.jsonc` incluido en este repositorio es una **plantilla comentada** con ejemplos de todos los patrones posibles:
 
 - **Cuenta estándar**: GitHub, GitLab, Gitea con GCM o SSH
 - **Dos cuentas en el mismo servidor**: diferenciadas por el path de la URL
@@ -73,3 +73,17 @@ El fichero `git-config-repos.json` incluido en este repositorio es una **plantil
 - **Cuenta readonly/cross-org**: `url` sin usuario al final + nombre de repo con slash (`"org/repo"`) — para clonar repos de organizaciones ajenas
 - **Cuenta mínima**: solo los campos requeridos (sin `gcm_provider` ni SSH)
 - **Override por repo**: `name`, `email`, `folder` y `credential_type` a nivel de repositorio individual
+
+## JSON Schema
+
+El fichero `git-config-repos.schema.json` define un [JSON Schema](https://json-schema.org/) (draft 2020-12) para validar y autocompletar el archivo de configuración.
+
+Para activar la validación en tu editor, añade `$schema` al inicio de tu `git-config-repos.json`:
+
+```json
+{
+    "$schema": "https://raw.githubusercontent.com/LuisPalacios/git-toolkit/main/git-config-repos.schema.json",
+    "global": { ... },
+    "accounts": { ... }
+}
+```

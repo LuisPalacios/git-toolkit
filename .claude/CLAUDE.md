@@ -90,9 +90,9 @@ Scans all `.git` directories from the current working directory and reports sync
 
 Both scripts share the same detection block, setting `PLATFORM` (`wsl2` | `gitbash` | `macos` | `linux`) and `cmdgit` (`git.exe` on WSL2, `git` elsewhere). Git Bash is detected first via `$MSYSTEM` before the `/proc/version` check.
 
-## JSON configuration (`git-config-repos.json`)
+## JSON configuration (`git-config-repos.jsonc`)
 
-The file `git-config-repos.json` in this repo is an **annotated example** (it contains JS-style comments and must have them stripped before use). The actual config must be placed at:
+The file `git-config-repos.jsonc` in this repo is an **annotated example** (it contains JS-style comments). The actual config must be valid JSON placed at:
 
 | Platform | Path |
 | -------- | ---- |
@@ -126,6 +126,10 @@ accounts.<AccountKey>:
 - **Split account**: same org/username, different local `folder`
 - **Readonly / cross-org**: `url` without user path + repo name as `"org/repo"`
 - **Minimal account**: only required fields; `gcm_provider` and SSH fields are optional
+
+## JSON Schema
+
+`git-config-repos.schema.json` provides a JSON Schema (draft 2020-12) for validating the config file. Consumers can add `"$schema"` pointing to the raw GitHub URL to get editor autocompletion and validation. The script ignores the `$schema` key.
 
 ## Windows specifics
 
