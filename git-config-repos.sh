@@ -79,7 +79,7 @@ Configuración:
     Linux/macOS/Git Bash: ~/.config/git-config-repos/git-config-repos.json
     WSL2:                 /mnt/c/Users/<user>/.config/git-config-repos/git-config-repos.json
 
-Más información: https://github.com/luispa/git-config-repos
+Más información: https://github.com/LuisPalacios/git-toolkit
 USAGE
     exit 0
 }
