@@ -1,0 +1,50 @@
+Last updated: 2026-03-20
+
+- Goal: Evolve git-toolkit from Bash scripts into a native multi-platform C++ app (CLI + GUI) for managing Git multi-account environments. Success = working Windows GUI with setup wizard, status dashboard, and pull operations.
+- Constraints/Assumptions:
+  - Windows 11 + Git Bash (MINGW64) is the primary dev/test environment
+  - Toolchain: Clang 21.1.8, CMake 4.2.3, Ninja 1.13.2 (all verified working)
+  - No Claude attribution in commits
+  - Spanish text must use proper accents (á, é, í, ó, ú, ñ)
+  - C++ coding standards in `.claude/rules/cpp-coding.md` (PascalCase functions, _camelCase members, no exceptions, scoped_lock not lock_guard)
+  - macOS GUI will use SwiftUI + C bridge (Xcode 26.3 + Claude), Linux will use GTK4/gtkmm
+  - Config v1 (`accounts`) lives at `~/.config/git-config-repos/git-config-repos.json`
+  - Config v2 (`sources`) will live at `~/.config/git-toolkit/git-toolkit.json`
+  - Three auth methods: GCM, Token (PAT), SSH
+  - JSON key renamed: `accounts` → `sources` in v2
+- Key decisions:
+  - Repo restructured into 3 sub-projects: `git-toolkit/` (C++ app), `git-config-repos/` (shell), `git-status-pull/` (shell)
+  - Schema + jsonc moved under `git-config-repos/`
+  - Consumer repo `$schema` URL updated to new path
+  - Core is a static C++ lib, GUIs link against it, git operations shell out to `git` (not libgit2)
+  - nlohmann/json for JSON, Catch2 for tests, FetchContent for deps
+- State:
+  - Done:
+    - Phase 0: Repo restructured, docs for each sub-project, CMake skeleton
+    - Phase 1: Core library complete (log, platform, config, git_ops, sync_status, engine) — 29 tests passing
+    - Phase 2: CLI complete (validate, status, pull, sync subcommands with --verbose, --source, --repo, --dry-run)
+    - Phase 3: Windows GUI foundation (MainWindow with TreeView, detail panel, toolbar buttons, status bar) — builds and launches
+    - JSON Schema created and published at `git-config-repos/git-config-repos.schema.json`
+    - Tilde expansion bug fixed in `git-config-repos.sh` for repo-level folder paths
+  - Now: User will test the GUI visually and provide feedback
+  - Next:
+    - Iterate on GUI based on user feedback (layout, UX, colors)
+    - Add status color dots in TreeView (green/blue/yellow/red)
+    - Add async operations (worker threads + PostMessage) so UI doesn't freeze during fetch/pull
+    - Add setup wizard dialog
+    - Add GCM browser auth flow dialog
+    - Credentials module (Win32 CredRead/CredWrite, token storage)
+    - SSH ops module (key generation, ssh-config management)
+    - macOS GUI (SwiftUI) and Linux GUI (GTK4) — best-effort without testing on those platforms
+- Open questions:
+  - UNCONFIRMED: Does the user want the GUI to support both v1 and v2 config editing, or only v2?
+  - UNCONFIRMED: Should `git-toolkit sync` trigger GCM browser auth automatically or prompt first?
+- Working set:
+  - `git-toolkit/core/` — C++ core library (all modules)
+  - `git-toolkit/cli/main.cpp` — CLI entry point
+  - `git-toolkit/gui/windows/` — Win32 GUI (MainWindow.cpp, main.cpp)
+  - `git-toolkit/CMakeLists.txt` — top-level build
+  - `~/.config/git-config-repos/git-config-repos.json` — real config being tested against
+  - Build: `cd git-toolkit && cmake --build build` / Test: `cd build && ctest --output-on-failure`
+  - GUI: `./build/gui/windows/git-toolkit-gui.exe`
+  - CLI: `./build/cli/git-toolkit.exe <command>`
