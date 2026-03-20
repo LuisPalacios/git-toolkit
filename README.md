@@ -4,7 +4,7 @@ Scripts de apoyo para trabajar con Git en entorno de múltiples cuentas con uno 
 
 Soportan dos opciones de autenticación: 1) HTTPS + Git Credential Manager y 2) SSH multicuenta. La primera, HTTPS + Git Credential Manager, es la que suelo usar cuando trabajo en un Desktop con UI porque es compatible con el CLI y/o herramientas GUI tipo Visual Studio, VSCode, Git Desktop, Gitkraken, etc. La segunda opción, SSH multicuenta, la suelo usar en equipos linux "headless", servidores a los que conecto en remoto vía (CLI o VSCode remote) y necesito que clonen repositorios y trabajen sobre ellos.
 
-Tengo un apunte donde describo como trabajar en entornos [Git Multicuenta](https://www.luispa.com/desarrollo/2024/09/21/git-multicuenta.html).
+Tengo un apunte donde describo como trabajar en entornos [Git Multicuenta](https://luispa.com/posts/2024-09-21-git-multicuenta/).
 
 ## Compatibilidad de plataformas
 
