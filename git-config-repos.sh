@@ -771,6 +771,12 @@ while IFS=$'\t' read -r _key _url _username _folder _name _email _gcm_provider _
         # Construyo la ruta del repositorio
         repo_folder="$_rfolder"
         if [ "$repo_folder" != "" ] && [ "$repo_folder" != "null" ]; then
+            # Expandir ~ al HOME (o USERPROFILE en WSL2)
+            if [[ "$PLATFORM" == "wsl2" ]]; then
+                repo_folder="${repo_folder/#\~/$USERPROFILE}"
+            else
+                repo_folder="${repo_folder/#\~/$HOME}"
+            fi
             if [ "${repo_folder:0:1}" == "/" ]; then
                 repo_path="$repo_folder"
             else
