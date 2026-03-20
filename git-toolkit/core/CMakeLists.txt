@@ -1,11 +1,19 @@
 set(CORE_SOURCES
     src/log.cpp
     src/platform.cpp
+    src/config.cpp
+    src/git_ops.cpp
+    src/sync_status.cpp
+    src/engine.cpp
 )
 
 set(CORE_HEADERS
     include/gittoolkit/log.h
     include/gittoolkit/platform.h
+    include/gittoolkit/config.h
+    include/gittoolkit/git_ops.h
+    include/gittoolkit/sync_status.h
+    include/gittoolkit/engine.h
 )
 
 add_library(gittoolkit_core STATIC ${CORE_SOURCES} ${CORE_HEADERS})

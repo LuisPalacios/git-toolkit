@@ -35,7 +35,7 @@ enable_testing()
 add_subdirectory(core)
 
 # CLI frontend
-# add_subdirectory(cli)
+add_subdirectory(cli)
 
 # Platform-native GUI
 # if(APPLE)

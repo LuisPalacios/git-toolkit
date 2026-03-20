@@ -25,3 +25,4 @@ Thumbs.db
 *.dll
 *.dylib
 *.so
+git-toolkit/.cache/
