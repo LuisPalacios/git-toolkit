@@ -1,6 +1,71 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code when working with code in this repository.
+
+## What this repo is
+
+A multi-component project for managing Git multi-account environments across providers (GitHub, GitLab, Gitea, Forgejo). Three sub-projects:
+
+1. **`git-toolkit/`** — Native C++ app (core library + CLI + platform-native GUIs). In development.
+2. **`git-config-repos/`** — Bash script for automated repo configuration. Production, power users.
+3. **`git-status-pull/`** — Bash script for sync status and auto-pull. Production, power users.
+
+## Repository layout
+
+```text
+git-toolkit/              # C++ core + CLI + GUI (SwiftUI/Win32/GTK)
+  core/                   # libgittoolkit shared library
+  cli/                    # CLI frontend
+  gui/{macos,windows,linux}/
+  docs/
+
+git-config-repos/         # Shell script sub-project
+  git-config-repos.sh
+  git-config-repos.jsonc  # Annotated example config
+  git-config-repos.schema.json  # v1 JSON Schema
+  docs/
+
+git-status-pull/          # Shell script sub-project
+  git-status-pull.sh
+  docs/
+```
+
+## Shell scripts
+
+### `git-config-repos/git-config-repos.sh`
+
+Reads `~/.config/git-config-repos/git-config-repos.json` and for each configured account/repo: verifies credentials, clones repos that don't exist, and fixes configuration of existing ones. Supports GCM, SSH, and token credential types per-repo.
+
+```bash
+./git-config-repos/git-config-repos.sh
+./git-config-repos/git-config-repos.sh --dry-run
+```
+
+### `git-status-pull/git-status-pull.sh`
+
+Scans all `.git` directories from CWD and reports sync status. Can auto-pull if safe.
+
+```bash
+./git-status-pull/git-status-pull.sh
+./git-status-pull/git-status-pull.sh -v pull
+```
+
+## Platform detection
+
+Both scripts share the same detection block: `PLATFORM` (`wsl2` | `gitbash` | `macos` | `linux`) and `cmdgit` (`git.exe` on WSL2, `git` elsewhere).
+
+## C++ core (git-toolkit/)
+
+Built with CMake, C++20. Dependencies: nlohmann/json (header-only), Catch2 or GoogleTest.
+
+Credential stores use native OS APIs: Security.framework (macOS), Win32 CredRead/CredWrite (Windows), libsecret (Linux).
+
+macOS GUI uses SwiftUI with a C bridge layer to the C++ core. Windows GUI uses Win32. Linux GUI uses GTK4 via gtkmm.
+
+## Config format
+
+**v1** (current, shell scripts): `~/.config/git-config-repos/git-config-repos.json`
+**v2** (git-toolkit app): `~/.config/git-toolkit/git-toolkit.json` — renames `accounts` to `sources`, real booleans, adds `"token"` credential type.
 
 ## Workflow Orchestration
 
@@ -9,7 +74,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### 1. Plan First
 
 - Enter plan mode for ANY non-trivial task (3+ steps or architectural decisions)
-- If something goes sideways, STOP and re-plan immediately — don't keep pushing
+- If something goes sideways, STOP and re-plan immediately
 - Write detailed specs upfront to reduce ambiguity
 
 ### 2. Subagent Strategy
@@ -22,122 +87,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - Never mark a task complete without proving it works
 - Test scripts with `bash -n` (syntax check) and `shellcheck` when available
+- C++ builds: `cmake --build` + `ctest`
 - Validate config templates render correctly before committing
-- Diff behavior between main and your changes when relevant
 
 ### 4. Autonomous Bug Fixing
 
-- When given a bug report: just fix it. Don't ask for hand-holding
+- When given a bug report: just fix it
 - Point at logs, errors, failing tests — then resolve them
-- Zero context switching required from the user
 
 ### 5. Learn from Corrections
 
 - After corrections from the user: save a `feedback` memory via the memory system
-- Do NOT maintain a separate lessons file — use `.claude/projects/.../memory/` exclusively
-
-## Task Management
-
-1. **Plan First**: Write a plan with checkable items before starting
-2. **Verify Plan**: Check in before starting implementation
-3. **Track Progress**: Mark items complete as you go
-4. **Explain Changes**: High-level summary at each step
 
 ## Core Principles
 
-- **Simplicity First**: Make every change as simple as possible. Impact minimal code.
-- **No Laziness**: Find root causes. No temporary fixes. Senior developer standards.
-- **Minimal Impact**: Changes should only touch what's necessary. Avoid introducing bugs.
-- **Skills first**: Check if a skill exists (`/fixing-markdown`, etc.) before doing the work manually
-- **Self-improve**: When a skill fails or has gaps, update its `SKILL.md` with the fix
+- **Simplicity First**: Make every change as simple as possible
+- **No Laziness**: Find root causes. No temporary fixes.
+- **Minimal Impact**: Changes should only touch what's necessary
+- **Skills first**: Check if a skill exists before doing work manually
 - **Zero entropy**: Never create files outside defined structure
-
-## What this repo is
-
-A collection of Bash scripts to manage Git multi-account environments across multiple Git providers (GitHub, GitLab, Gitea). Supports two authentication methods: HTTPS + Git Credential Manager (GCM) and SSH multi-account. Compatible with Linux, macOS, WSL2, and Git Bash on Windows — all via `.sh` scripts, no platform-specific wrappers.
-
-## Scripts
-
-### `git-config-repos.sh`
-Reads `~/.config/git-config-repos/git-config-repos.json` and for each configured account/repo: verifies credentials, clones repos that don't exist, and fixes configuration of existing ones. Supports GCM and SSH credential types per-repo.
-
-**Run:**
-```bash
-chmod +x git-config-repos.sh
-./git-config-repos.sh
-```
-
-**Dependencies:**
-
-| Platform | Required |
-| -------- | -------- |
-| Linux | `git`, `jq`, `git-credential-manager` (if using GCM) |
-| macOS | `git`, `jq`, `git-credential-manager` |
-| WSL2 | `jq` (in WSL2), `git.exe` + `cmd.exe` + `git-credential-manager.exe` (Windows host) |
-| Git Bash | `git`, `jq.exe`, `git-credential-manager` (bundled with Git for Windows >= 2.39) |
-
-### `git-status-pull.sh`
-Scans all `.git` directories from the current working directory and reports sync status with upstream. Can auto-pull if safe to do so.
-
-```bash
-./git-status-pull.sh          # Check status
-./git-status-pull.sh pull     # Auto-pull where safe
-./git-status-pull.sh -v       # Verbose output
-./git-status-pull.sh -v pull  # Both
-```
-
-## Platform detection
-
-Both scripts share the same detection block, setting `PLATFORM` (`wsl2` | `gitbash` | `macos` | `linux`) and `cmdgit` (`git.exe` on WSL2, `git` elsewhere). Git Bash is detected first via `$MSYSTEM` before the `/proc/version` check.
-
-## JSON configuration (`git-config-repos.jsonc`)
-
-The file `git-config-repos.jsonc` in this repo is an **annotated example** (it contains JS-style comments). The actual config must be valid JSON placed at:
-
-| Platform | Path |
-| -------- | ---- |
-| Linux / macOS / Git Bash | `~/.config/git-config-repos/git-config-repos.json` |
-| WSL2 | `/mnt/c/Users/<user>/.config/git-config-repos/git-config-repos.json` |
-
-### JSON structure
-
-```text
-global:
-  folder          - root dir for all git repos (supports ~/path or absolute)
-  credential_ssh: enabled, ssh_folder (supports ~/path)
-  credential_gcm: enabled, helper, credentialStore
-                  (wincredman=Windows, keychain=macOS, secretservice=Linux)
-
-accounts.<AccountKey>:
-  url             - provider URL + user path; omit user path for cross-org clones
-  username, folder, name, email
-  gcm_provider, gcm_useHttpPath  (optional — skipped if absent)
-  ssh_host, ssh_hostname, ssh_type  (optional — required only if a repo uses ssh)
-  repos.<RepoName>:
-    credential_type: "gcm" | "ssh"
-    name, email     (optional per-repo overrides)
-    folder          (optional: absolute or relative to account folder)
-```
-
-### Account patterns documented in the example config
-
-- **Standard**: Gitea/GitHub with GCM or SSH
-- **Two accounts same server**: different user path in `url`
-- **Split account**: same org/username, different local `folder`
-- **Readonly / cross-org**: `url` without user path + repo name as `"org/repo"`
-- **Minimal account**: only required fields; `gcm_provider` and SSH fields are optional
-
-## JSON Schema
-
-`git-config-repos.schema.json` provides a JSON Schema (draft 2020-12) for validating the config file. Consumers can add `"$schema"` pointing to the raw GitHub URL to get editor autocompletion and validation. The script ignores the `$schema` key.
-
-## Windows specifics
-
-**WSL2:** Uses `git.exe` (Windows Git) to integrate with Windows Credential Manager and avoid WSL2 filesystem slowness. Path conversion `/mnt/c/...` → `C:\...` is done internally via `convert_wsl_to_windows_path()` only at clone time.
-
-**Git Bash:** Uses native `git`. Paths stay in POSIX format throughout. Windows Credential Manager is accessed via `cmd.exe cmdkey`, same mechanism as WSL2.
-
-## Credential types
-
-- **GCM (HTTPS):** Uses Git Credential Manager. Credentials are stored in the OS keychain (Windows Credential Manager / macOS Keychain / Linux Secret Service). The script triggers browser-based authentication when credentials are missing.
-- **SSH:** Generates per-account ed25519 (or configured type) key pairs at `~/.ssh/<ssh_host>-sshkey`. Adds an `Include` directive to `~/.ssh/config` pointing to `~/.ssh/git-config-repos` which is regenerated on each run.
