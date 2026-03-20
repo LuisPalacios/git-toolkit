@@ -1,16 +1,16 @@
 # git-toolkit
 
-Aplicacion nativa multiplataforma para gestionar repositorios Git con multiples cuentas y proveedores (GitHub, GitLab, Gitea, Forgejo).
+Aplicación nativa multiplataforma para gestionar repositorios Git con múltiples cuentas y proveedores (GitHub, GitLab, Gitea, Forgejo).
 
 ## Estado
 
-En desarrollo. Consulta el [plan de evolucion](../../.claude/plans/magical-mapping-pine.md) para detalles.
+En desarrollo. Consulta el [plan de evolución](../../.claude/plans/magical-mapping-pine.md) para detalles.
 
-## Caracteristicas previstas
+## Características previstas
 
-- **Asistente de configuracion**: Anade cuentas y repos de forma guiada, sin editar JSON
-- **Tres metodos de autenticacion**: HTTPS+GCM (navegador), Token (PAT), SSH
-- **Panel de estado**: Ve de un vistazo que repos necesitan pull, estan sucios o tienen conflictos
+- **Asistente de configuración**: Añade cuentas y repos de forma guiada, sin editar JSON
+- **Tres métodos de autenticación**: HTTPS+GCM (navegador), Token (PAT), SSH
+- **Panel de estado**: Ve de un vistazo qué repos necesitan pull, están sucios o tienen conflictos
 - **Pull selectivo**: Por repositorio, por fuente o global
 - **Multiplataforma nativa**: SwiftUI (macOS), Win32 (Windows), GTK4 (Linux)
 - **CLI incluido**: `git-toolkit sync`, `git-toolkit status`, `git-toolkit pull`
@@ -18,7 +18,7 @@ En desarrollo. Consulta el [plan de evolucion](../../.claude/plans/magical-mappi
 ## Arquitectura
 
 ```text
-core/     -> Libreria C++ compartida (config, credenciales, git, SSH, estado)
+core/     -> Librería C++ compartida (config, credenciales, git, SSH, estado)
 cli/      -> Frontend CLI en C++
 gui/      -> GUIs nativas por plataforma
   macos/  -> SwiftUI + bridge C
@@ -26,9 +26,9 @@ gui/      -> GUIs nativas por plataforma
   linux/  -> GTK4 via gtkmm
 ```
 
-## Configuracion
+## Configuración
 
-El fichero de configuracion se ubica en:
+El fichero de configuración se ubica en:
 
 | Plataforma | Ruta |
 | ---------- | ---- |
