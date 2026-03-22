@@ -11,6 +11,11 @@ Two binaries are available:
 
 Both read the same configuration file at `~/.config/git-toolkit/git-toolkit.json`.
 
+The configuration has two main sections:
+
+- **`accounts`** — WHO you are on each server (credentials, identity)
+- **`sources`** — WHAT you clone from each account (repos organized by org/repo)
+
 ---
 
 ## Installation
@@ -29,7 +34,6 @@ Place them in a directory on your `PATH` (e.g., `C:\Users\<you>\bin`).
 ### macOS
 
 ```bash
-# Download and extract (example for arm64)
 curl -LO https://github.com/LuisPalacios/git-toolkit/releases/latest/download/git-toolkit-darwin-arm64.tar.gz
 tar xzf git-toolkit-darwin-arm64.tar.gz
 sudo mv git-toolkit git-toolkit-gui /usr/local/bin/
@@ -40,7 +44,6 @@ sudo mv git-toolkit git-toolkit-gui /usr/local/bin/
 ### Linux
 
 ```bash
-# Download and extract (example for amd64)
 curl -LO https://github.com/LuisPalacios/git-toolkit/releases/latest/download/git-toolkit-linux-amd64.tar.gz
 tar xzf git-toolkit-linux-amd64.tar.gz
 sudo mv git-toolkit /usr/local/bin/
@@ -54,73 +57,235 @@ sudo mv git-toolkit-gui /usr/local/bin/
 
 ## First-Time Setup
 
-### Using the GUI
-
-1. Launch `git-toolkit-gui`
-2. The setup wizard will appear since no configuration file exists yet
-3. Follow the steps:
-   - Set your root folder for Git clones (e.g., `~/00.git`)
-   - Add your first Git provider account
-   - Choose your authentication method (GCM recommended for desktops)
-   - Authenticate via the guided flow
-   - Discover and select repositories to manage
-4. Your configuration is saved to `~/.config/git-toolkit/git-toolkit.json`
-
-### Using the CLI
+### Option 1: Interactive init (recommended)
 
 ```bash
-# Create a minimal configuration interactively
 git-toolkit init
+```
 
-# Or migrate from an existing git-config-repos.json (v1 format)
+This creates `~/.config/git-toolkit/git-toolkit.json` with your global settings (root folder, credential store). It auto-detects your OS for the credential store.
+
+Then add your accounts, sources, and repos:
+
+```bash
+# Add an account (who you are on a server)
+git-toolkit account add my-github \
+  --provider github \
+  --url https://github.com \
+  --username YourUser \
+  --name "Your Name" \
+  --email "you@example.com" \
+  --default-credential-type gcm
+
+# Add a source (what you clone from that account)
+git-toolkit source add my-github --account my-github
+
+# Add repos (org/repo format)
+git-toolkit repo add my-github "YourUser/my-project"
+git-toolkit repo add my-github "YourUser/dotfiles"
+```
+
+### Option 2: Migrate from git-config-repos.sh (v1)
+
+If you already have a `~/.config/git-config-repos/git-config-repos.json`:
+
+```bash
+# Preview what the migration will produce
+git-toolkit migrate --dry-run
+
+# Run the actual migration
 git-toolkit migrate
+```
+
+The original v1 file is never modified. Both tools can coexist.
+
+### Option 3: Launch the GUI
+
+```bash
+git-toolkit-gui
+```
+
+The setup wizard will guide you through creating accounts and discovering repos.
+
+---
+
+## Account Management
+
+An account represents WHO you are on a git server — one unique `(hostname, username)` pair.
+
+### Adding accounts
+
+```bash
+# GitHub personal
+git-toolkit account add github-personal \
+  --provider github \
+  --url https://github.com \
+  --username LuisPalacios \
+  --name "Luis Palacios" \
+  --email "luis@example.com" \
+  --default-credential-type gcm
+
+# Forgejo homelab
+git-toolkit account add forgejo-homelab \
+  --provider forgejo \
+  --url https://forge.mylab.lan \
+  --username luis \
+  --name "Luis Palacios" \
+  --email "luis@mylab.lan" \
+  --default-credential-type ssh
+
+# GitLab
+git-toolkit account add gitlab-work \
+  --provider gitlab \
+  --url https://gitlab.com \
+  --username youruser \
+  --name "Your Name" \
+  --email "you@company.com"
+```
+
+### Listing and inspecting accounts
+
+```bash
+git-toolkit account list
+git-toolkit account show github-personal
+git-toolkit account show github-personal --json
+```
+
+### Updating an account
+
+Only the flags you specify are changed:
+
+```bash
+git-toolkit account update github-personal --name "New Name" --email "new@email.com"
+```
+
+### Deleting an account
+
+An account can only be deleted if no sources reference it:
+
+```bash
+git-toolkit account delete github-personal
+# Error: cannot delete — referenced by source "github-personal"
+
+git-toolkit source delete github-personal
+git-toolkit account delete github-personal  # now succeeds
 ```
 
 ---
 
-## Account Configuration
+## Source Management
 
-### Adding a GitHub Account
+A source represents WHAT you clone from an account. Each source references one account and contains a list of repos.
 
-**GUI:** Click "Add Source" > Select "GitHub" > Enter your username and URL.
-
-**CLI:**
+### Adding a source
 
 ```bash
-git-toolkit config add-source \
-  --name "GitHub-Personal" \
-  --provider github \
-  --url "https://github.com/YourUsername" \
-  --username "YourUsername" \
-  --folder "github-personal" \
-  --user-name "Your Name" \
-  --user-email "you@example.com"
+git-toolkit source add github-personal --account github-personal
+git-toolkit source add forgejo-homelab --account forgejo-homelab
 ```
 
-### Adding a Forgejo/Gitea Homelab
+By default, the source key is used as the first-level clone folder. To override:
 
 ```bash
-git-toolkit config add-source \
-  --name "Forgejo-Homelab" \
-  --provider forgejo \
-  --url "https://forge.mylab.lan/myuser" \
-  --username "myuser" \
-  --folder "forgejo-homelab" \
-  --user-name "Your Name" \
-  --user-email "you@mylab.lan"
+git-toolkit source add my-server --account forgejo-homelab --folder "server-repos"
 ```
 
-### Adding a GitLab Account
+### Listing sources
 
 ```bash
-git-toolkit config add-source \
-  --name "GitLab-Work" \
-  --provider gitlab \
-  --url "https://gitlab.com/youruser" \
-  --username "youruser" \
-  --folder "gitlab-work" \
-  --user-name "Your Name" \
-  --user-email "you@company.com"
+git-toolkit source list
+git-toolkit source list --account github-personal
+```
+
+---
+
+## Repo Management
+
+Repos use `org/repo` format. The org part becomes the second-level folder, the repo part becomes the third-level (clone) folder.
+
+### Adding repos
+
+```bash
+# Simple — inherits credential type from account default
+git-toolkit repo add github-personal "LuisPalacios/git-toolkit"
+git-toolkit repo add github-personal "LuisPalacios/dotfiles"
+
+# Cross-org — access another org's repo with your credentials
+git-toolkit repo add github-personal "other-org/their-repo"
+
+# Multiple orgs on same server (Forgejo/Gitea)
+git-toolkit repo add forgejo-homelab "infra/homelab-ops"
+git-toolkit repo add forgejo-homelab "infra/migra-forgejo"
+git-toolkit repo add forgejo-homelab "familia/ines-denia"
+
+# Override credential type for a specific repo
+git-toolkit repo add github-personal "LuisPalacios/private-repo" --credential-type ssh
+```
+
+### Folder overrides
+
+```bash
+# Override the 2nd level folder (org → custom name)
+git-toolkit repo add github-work "Sumwall/sumwall.github.io" --id-folder "sumwall-rest"
+# Clones to: ~/git/github-work/sumwall-rest/sumwall.github.io/
+
+# Override the 3rd level folder (clone name)
+git-toolkit repo add github-work "Sumwall/sumwall.web" --clone-folder "website"
+# Clones to: ~/git/github-work/Sumwall/website/
+
+# Absolute path — replaces everything
+git-toolkit repo add forgejo-homelab "luis/my-config" --clone-folder "~/.config/my-config"
+# Clones to: ~/.config/my-config/
+```
+
+### Listing and inspecting repos
+
+```bash
+git-toolkit repo list
+git-toolkit repo list --source github-personal
+git-toolkit repo show github-personal "LuisPalacios/git-toolkit"
+```
+
+### Updating a repo
+
+```bash
+git-toolkit repo update github-personal "LuisPalacios/private-repo" --credential-type gcm
+git-toolkit repo update forgejo-homelab "infra/homelab-ops" --id-folder "infra-prod"
+```
+
+### Deleting a repo
+
+```bash
+git-toolkit repo delete github-personal "LuisPalacios/old-project"
+```
+
+---
+
+## Folder Structure
+
+Repos are cloned into a three-level directory structure:
+
+```text
+~/git/                              ← global.folder
+  <source-key>/                     ← 1st level (or source.folder if set)
+    <org>/                          ← 2nd level (from repo key, or id_folder override)
+      <repo>/                      ← 3rd level (from repo key, or clone_folder override)
+```
+
+Example with real data:
+
+```text
+~/00.git/
+  git-parchis/                      ← source key
+    familia/ines-denia/             ← org/repo
+    infra/homelab-ops/
+    infra/migra-forgejo/
+  github-LuisPalacios/             ← source key
+    LuisPalacios/git-toolkit/       ← org/repo
+    kollective-networks/kltv.kombine/  ← cross-org
+  github-sumwall/
+    Sumwall/sumwall.browser/
+    sumwall-rest/sumwall.github.io/ ← id_folder override
 ```
 
 ---
@@ -131,282 +296,190 @@ git-toolkit supports three authentication methods. Choose based on your environm
 
 | Method | Best for | How it works |
 | ------ | -------- | ------------ |
-| **GCM** | Desktops (Windows, macOS, Linux with GUI) | Browser-based OAuth, credentials stored in OS keystore |
-| **SSH** | Headless servers, advanced users | SSH key pairs with host aliases in `~/.ssh/config` |
-| **Token** | CI/CD, automation, Gitea/Forgejo | Personal Access Token stored in OS keystore |
+| **GCM** | Desktops (Windows, macOS, Linux with GUI) | Browser-based OAuth, credentials in OS keystore |
+| **SSH** | Headless servers, advanced users | SSH key pairs with host aliases |
+| **Token** | CI/CD, automation, Gitea/Forgejo | Personal Access Token in OS keystore |
 
-### GCM (Git Credential Manager) — Recommended for Desktops
-
-GCM handles authentication through your browser and stores credentials securely in your operating system's native keystore.
-
-**GUI guided flow:**
-
-1. Select a source and click "Setup Authentication" > "GCM"
-2. The wizard will display: *"Prepare your browser — you'll be redirected to authenticate"*
-3. A browser window opens to your provider's OAuth page
-4. **Important for multiple accounts:** If you have multiple accounts on the same provider (e.g., personal + work GitHub), make sure you're logged into the correct account in your browser before granting access
-5. Grant permissions for git-toolkit
-6. The wizard confirms: *"Credentials stored securely in [Windows Credential Manager / Keychain / Secret Service]"*
-7. Repeat for each account that uses GCM
-
-**CLI setup:**
+Set the default per account:
 
 ```bash
-# GCM is configured automatically when you clone the first repo
-git-toolkit clone --source "GitHub-Personal"
-# The browser will open for authentication on the first clone
+git-toolkit account add my-server \
+  --provider forgejo \
+  --url https://forge.lan \
+  --username luis \
+  --name "Luis" \
+  --email "luis@lan" \
+  --default-credential-type ssh    # all repos use SSH unless overridden
 ```
 
-**Credential store by platform:**
-
-- **Windows:** Windows Credential Manager (`wincredman`)
-- **macOS:** Keychain Access (`keychain`)
-- **Linux:** GNOME Keyring or KWallet via Secret Service (`secretservice`)
-
-### SSH — Recommended for Headless Servers
-
-SSH uses key pairs. git-toolkit can generate keys and configure `~/.ssh/config` automatically.
-
-**Setup:**
+Override per repo:
 
 ```bash
-# Generate SSH key and configure ~/.ssh/config
-git-toolkit auth setup-ssh --source "GitHub-Personal"
-# Output:
-#   Generated key: ~/.ssh/id_ed25519_git_gh-LuisPalacios
-#   Added host alias to ~/.ssh/config:
-#     Host gh-LuisPalacios
-#       HostName github.com
-#       User git
-#       IdentityFile ~/.ssh/id_ed25519_git_gh-LuisPalacios
-#       IdentitiesOnly yes
-#
-#   Public key (add this to GitHub > Settings > SSH Keys):
-#   ssh-ed25519 AAAA... luis@example.com
-
-# Test the connection
-git-toolkit auth test --source "GitHub-Personal"
+git-toolkit repo add my-server "infra/special" --credential-type token
 ```
 
-Repos configured with `credential_type: "ssh"` will clone using the host alias:
-`git@gh-LuisPalacios:LuisPalacios/repo.git`
+### Credential store by platform
 
-### Token (PAT) — For Automation or When GCM/SSH Aren't Available
-
-Tokens are stored in the OS credential store, **never** in the configuration file.
-
-```bash
-# Store a token securely
-git-toolkit auth set-token --source "Gitea-Server"
-# You'll be prompted to paste your Personal Access Token
-# It's stored in the OS keystore, not in git-toolkit.json
-```
-
-> **Security warning:** Tokens can leak if accidentally committed to a repository or left in shell history. Prefer SSH or GCM when possible.
-
----
-
-## Repo Discovery and Cloning
-
-### Discovering Repos
-
-Query the provider's API to see all available repositories:
-
-```bash
-# List all repos for a source
-git-toolkit discover "GitHub-Personal"
-
-# Output:
-#   Found 47 repositories for GitHub-Personal:
-#   [tracked]  git-toolkit
-#   [tracked]  dotfiles
-#   [new]      my-new-project
-#   [new]      another-repo
-#   ...
-```
-
-**GUI:** Click the "Discover" button on any source. A panel shows all remote repos with checkboxes to select which ones to track.
-
-### Adding Discovered Repos
-
-```bash
-# Add specific repos to track
-git-toolkit config add-repo --source "GitHub-Personal" --repo "my-new-project" --credential-type gcm
-
-# Add all untracked repos at once
-git-toolkit config add-repo --source "GitHub-Personal" --all --credential-type gcm
-```
-
-### Cloning
-
-```bash
-# Clone all repos for all sources
-git-toolkit clone --all
-
-# Clone repos for a specific source
-git-toolkit clone --source "GitHub-Personal"
-
-# Clone a specific repo
-git-toolkit clone --source "GitHub-Personal" --repo "my-new-project"
-```
+- **Windows:** `wincredman` (Windows Credential Manager)
+- **macOS:** `keychain` (Keychain Access)
+- **Linux:** `secretservice` (GNOME Keyring / KWallet)
 
 ---
 
 ## Status Monitoring
 
-Check the sync status of your clones:
-
 ```bash
-# Show status of all repos
+# All repos
 git-toolkit status
 
-# Output:
-#   GitHub-Personal/git-toolkit        ✓ clean
-#   GitHub-Personal/dotfiles           ↓ 3 behind
-#   Forgejo-Homelab/infra-docker       ✗ dirty (2 modified)
-#   Forgejo-Homelab/home-automation    ↑ 1 ahead
-#   GitLab-Work/pipeline-templates     ⚠ diverged (2 ahead, 1 behind)
-
 # Filter by source
-git-toolkit status --source "Forgejo-Homelab"
+git-toolkit status --source github-personal
 
-# JSON output for scripting
+# JSON output (for scripting)
 git-toolkit status --json
 ```
 
-**GUI:** The main dashboard shows all repos with color-coded status indicators. Click "Refresh Status" for an on-demand update — it runs asynchronously so you can keep working. Status auto-refreshes in the background while the app is open.
+Status indicators:
 
-### Pulling
+| Symbol | State | Meaning |
+| ------ | ----- | ------- |
+| ✓ | clean | Up to date |
+| ✗ | dirty | Uncommitted changes |
+| ↓ | behind | Needs pull |
+| ↑ | ahead | Needs push |
+| ⚠ | diverged | Both ahead and behind |
+| ⚡ | conflict | Merge conflicts |
+| ○ | not cloned | Directory doesn't exist |
+| ~ | no upstream | No tracking branch |
+
+---
+
+## Cloning
+
+```bash
+# Clone all repos from all sources
+git-toolkit clone --all
+
+# Clone repos for a specific source
+git-toolkit clone --source github-personal
+
+# Clone a specific repo
+git-toolkit clone --source github-personal --repo "LuisPalacios/git-toolkit"
+```
+
+---
+
+## Pulling
 
 ```bash
 # Pull all repos that are behind (fast-forward only)
 git-toolkit pull --all
 
 # Pull for a specific source
-git-toolkit pull --source "GitHub-Personal"
-
-# Pull a specific repo
-git-toolkit pull --source "GitHub-Personal" --repo "git-toolkit"
+git-toolkit pull --source github-personal
 ```
+
+Dirty or conflicted repos are skipped with a warning.
 
 ---
 
-## Repo Migration Between Providers
-
-Migrate repositories from one provider to another using `git clone --mirror`:
+## Migration from v1
 
 ```bash
-# Migrate a repo from GitHub to Forgejo homelab
-git-toolkit migrate-repo \
-  --from "GitHub-Personal" \
-  --to "Forgejo-Homelab" \
-  --repo "my-private-project"
+# Preview
+git-toolkit migrate --dry-run
 
-# This will:
-#   1. Create a bare mirror clone of the repo
-#   2. Create the repo on the target provider via API
-#   3. Push the mirror to the target
-#   4. Optionally add the repo to the target source in your config
+# Execute
+git-toolkit migrate
 ```
 
-**GUI:** Use the Migration Wizard — select source, target, and repos to migrate.
-
----
-
-## Push Mirrors (Automated Backups)
-
-Set up automated push mirrors from one provider to another (requires Gitea/Forgejo as target):
-
-```bash
-# Set up a push mirror from GitHub to Forgejo
-git-toolkit mirror setup \
-  --source "GitHub-Personal" \
-  --target "Forgejo-Homelab" \
-  --repo "important-project"
-```
-
-This uses the Forgejo/Gitea mirror API to set up automatic syncing.
+See [migration.md](migration.md) for details on what changes and how accounts are deduplicated.
 
 ---
 
 ## Configuration File Reference
 
-The configuration lives at `~/.config/git-toolkit/git-toolkit.json`. See the annotated example at [git-toolkit.jsonc](../git-toolkit.jsonc) for a complete reference with comments.
+The config lives at `~/.config/git-toolkit/git-toolkit.json`. See [git-toolkit.jsonc](../git-toolkit.jsonc) for a fully annotated example.
 
-### Global Section
+### Global
 
 | Field | Type | Required | Description |
 | ----- | ---- | -------- | ----------- |
-| `folder` | string | Yes | Root directory for all clones. Supports `~` prefix. |
+| `folder` | string | Yes | Root directory for all clones. Supports `~`. |
 | `credential_ssh.enabled` | boolean | No | Enable SSH credential management. |
 | `credential_ssh.ssh_folder` | string | No | SSH config directory. Default `~/.ssh`. |
-| `credential_gcm.enabled` | boolean | No | Enable GCM (HTTPS) authentication. |
+| `credential_gcm.enabled` | boolean | No | Enable GCM authentication. |
 | `credential_gcm.helper` | string | No | Credential helper. Typically `"manager"`. |
 | `credential_gcm.credential_store` | string | No | `"wincredman"`, `"keychain"`, or `"secretservice"`. |
 
-### Source Section
+### Account
 
 | Field | Type | Required | Description |
 | ----- | ---- | -------- | ----------- |
 | `provider` | string | Yes | `"github"`, `"gitlab"`, `"gitea"`, `"forgejo"`, `"bitbucket"`, `"generic"` |
-| `url` | string (URI) | Yes | Provider base URL with optional user/org path. |
-| `username` | string | Yes | Account username on the provider. |
-| `folder` | string | Yes | Subdirectory under `global.folder`. |
-| `name` | string | Yes | Default `git user.name` for repos. |
-| `email` | string (email) | Yes | Default `git user.email` for repos. |
-| `default_branch` | string | No | Default branch name (e.g., `"main"`). |
-| `ssh.host` | string | No | SSH Host alias for `~/.ssh/config`. |
+| `url` | string | Yes | Server URL (scheme+host, no path). |
+| `username` | string | Yes | Account username. |
+| `name` | string | Yes | Default `git user.name`. |
+| `email` | string | Yes | Default `git user.email`. |
+| `default_branch` | string | No | Default branch (e.g., `"main"`). |
+| `default_credential_type` | string | No | Default auth: `"gcm"`, `"ssh"`, or `"token"`. |
+| `ssh.host` | string | No | SSH Host alias. |
 | `ssh.hostname` | string | No | Real SSH hostname. |
-| `ssh.key_type` | string | No | `"ed25519"` (recommended) or `"rsa"`. |
-| `gcm.provider` | string | No | GCM provider hint: `"github"`, `"gitlab"`, `"bitbucket"`, `"generic"`. |
+| `ssh.key_type` | string | No | `"ed25519"` or `"rsa"`. |
+| `gcm.provider` | string | No | GCM provider hint. |
 | `gcm.use_http_path` | boolean | No | Scope credentials by HTTP path. |
 
-### Repo Section
+### Source
 
 | Field | Type | Required | Description |
 | ----- | ---- | -------- | ----------- |
-| `credential_type` | string | Yes | `"gcm"`, `"ssh"`, or `"token"`. |
+| `account` | string | Yes | References an account key. |
+| `folder` | string | No | Override first-level clone folder. Default: source key. |
+
+### Repo (within source.repos)
+
+| Field | Type | Required | Description |
+| ----- | ---- | -------- | ----------- |
+| `credential_type` | string | No | Override auth method. Inherits from account. |
 | `name` | string | No | Override `git user.name`. |
-| `email` | string (email) | No | Override `git user.email`. |
-| `folder` | string | No | Custom clone path (absolute or relative). |
+| `email` | string | No | Override `git user.email`. |
+| `id_folder` | string | No | Override 2nd level dir (org folder). |
+| `clone_folder` | string | No | Override 3rd level dir. If absolute, replaces entire path. |
 
 ---
 
 ## Troubleshooting
 
+### Config not found
+
+```bash
+# Check where git-toolkit looks for the config
+git-toolkit config path
+
+# Create a new config
+git-toolkit init
+
+# Or specify a custom path
+git-toolkit status --config /path/to/my-config.json
+```
+
 ### GCM opens the wrong browser account
 
-Make sure you're logged into the correct account in your browser before GCM triggers the OAuth flow. If credentials are cached for the wrong account, clear them:
+Clear cached credentials:
 
-- **Windows:** Control Panel > Credential Manager > Windows Credentials > remove entries starting with `git:https://github.com`
-- **macOS:** Keychain Access > search for `github.com` > delete the entry
+- **Windows:** Control Panel > Credential Manager > remove `git:https://github.com` entries
+- **macOS:** Keychain Access > search `github.com` > delete
 - **Linux:** `secret-tool clear protocol https host github.com`
 
 ### SSH connection refused
 
 ```bash
-# Test the connection
 ssh -T git@gh-YourAlias -v
-
-# Common issues:
-# - Key not added to the provider's SSH settings
-# - Wrong IdentityFile path in ~/.ssh/config
-# - SSH agent not running: eval "$(ssh-agent -s)" && ssh-add ~/.ssh/id_ed25519_git_...
+# Check: key added to provider, correct IdentityFile, ssh-agent running
 ```
 
 ### "Repository not found" on clone
 
-- Verify the URL in your config matches the actual repo URL
-- For cross-org repos, the `url` should point to the host only (e.g., `https://github.com`), and the repo name should include the org (e.g., `"other-org/repo-name"`)
-- Verify your credentials are valid: `git-toolkit auth test --source "SourceName"`
-
-### Migrating from git-config-repos.sh (v1)
-
-```bash
-git-toolkit migrate
-# Reads ~/.config/git-config-repos/git-config-repos.json (v1)
-# Writes ~/.config/git-toolkit/git-toolkit.json (v2)
-# Original v1 file is NOT modified
-```
-
-See [migration.md](migration.md) for details.
+- Verify the `org/repo` name matches the actual repo
+- Verify your credentials: test with `git ls-remote <url>`
+- For cross-org repos, make sure your account has access

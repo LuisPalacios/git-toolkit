@@ -17,7 +17,7 @@
 
 ---
 
-Supports **GitHub**, **GitLab**, **Gitea**, **Forgejo**, and **Bitbucket** — on Windows, macOS, Linux, and headless servers.
+Supports **GitHub**, **GitLab**, **Gitea**, **Forgejo**, **Bitbucket**, **etc** — on Windows, macOS, Linux, and headless servers.
 
 ## What It Does
 
@@ -27,27 +27,6 @@ git-toolkit unifies multi-account Git management into two binaries:
 - **`git-toolkit-gui`** — Desktop GUI for everyone else (Wails + Svelte)
 
 Both share the same Go library and read the same configuration file.
-
-```text
-┌──────────────────────────────────────────┐
-│            Go Module: git-toolkit        │
-├──────────────┬───────────────────────────┤
-│  pkg/        │  Shared Go library        │
-│  ├─ config/  │  Config v2 read/write     │
-│  ├─ git/     │  Git subprocess ops       │
-│  ├─ provider/│  Provider API clients     │
-│  ├─ mirror/  │  Migration + mirrors      │
-│  └─ status/  │  Clone status checking    │
-├──────────────┼───────────────────────────┤
-│  cmd/cli/    │  CLI binary               │
-├──────────────┼───────────────────────────┤
-│  cmd/gui/    │  Wails v2 + Svelte GUI    │
-└──────────────┴───────────────────────────┘
-         │                    │
-    system git         Provider APIs
-         │
-  ~/.config/git-toolkit/git-toolkit.json
-```
 
 ## Features
 

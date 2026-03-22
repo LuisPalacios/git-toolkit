@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/LuisPalacios/git-toolkit/pkg/config"
 	"github.com/spf13/cobra"
 )
 
@@ -41,6 +42,9 @@ func init() {
 	rootCmd.AddCommand(cloneCmd)
 	rootCmd.AddCommand(pullCmd)
 	rootCmd.AddCommand(migrateCmd)
+	rootCmd.AddCommand(accountCmd)
+	rootCmd.AddCommand(sourceCmd)
+	rootCmd.AddCommand(repoCmd)
 }
 
 func main() {
@@ -55,6 +59,47 @@ func resolveConfigPath() string {
 		return configPath
 	}
 	return ""
+}
+
+// configFilePath returns the resolved config file path.
+func configFilePath() string {
+	if configPath != "" {
+		return configPath
+	}
+	return config.DefaultV2Path()
+}
+
+// loadConfig loads the config file.
+func loadConfig() (*config.Config, error) {
+	return config.Load(configFilePath())
+}
+
+// loadOrCreateConfig loads the config or creates an empty one if it doesn't exist.
+func loadOrCreateConfig() (*config.Config, error) {
+	path := configFilePath()
+	cfg, err := config.Load(path)
+	if err != nil {
+		// File doesn't exist — create empty config.
+		cfg = &config.Config{
+			Version:  2,
+			Global:   config.GlobalConfig{Folder: "~/git"},
+			Accounts: make(map[string]config.Account),
+			Sources:  make(map[string]config.Source),
+		}
+	}
+	return cfg, nil
+}
+
+// saveConfig saves the config to disk.
+func saveConfig(cfg *config.Config) error {
+	path := configFilePath()
+	if err := config.Save(cfg, path); err != nil {
+		return fmt.Errorf("saving config: %w", err)
+	}
+	if verbose {
+		fmt.Fprintf(os.Stderr, "Config saved to %s\n", path)
+	}
+	return nil
 }
 
 // printError prints an error message to stderr.
