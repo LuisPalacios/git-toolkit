@@ -11,7 +11,11 @@ import (
 )
 
 // Build-time variables (set via -ldflags).
-var version = "0.1.0-dev"
+// CI sets these; local builds get defaults with -dev- tag.
+var (
+	version = "dev"    // git tag (e.g., "v0.1.0") or "dev"
+	commit  = "none"   // git short SHA (e.g., "a99cf17")
+)
 
 // Global flags.
 var (
