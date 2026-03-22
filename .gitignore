@@ -1,6 +1,17 @@
 # Build directories
 build/
-__cmake_systeminformation/
+dist/
+
+# Go
+git-toolkit
+git-toolkit.exe
+git-toolkit-gui
+git-toolkit-gui.exe
+
+# Wails
+cmd/gui/build/
+cmd/gui/frontend/node_modules/
+cmd/gui/frontend/dist/
 
 # IDE
 .vs/
@@ -9,6 +20,7 @@ __cmake_systeminformation/
 *.user
 *.sln
 *.vcxproj*
+.idea/
 
 # OS
 .DS_Store
@@ -16,8 +28,7 @@ Thumbs.db
 *.swp
 *~
 
-# Compiled
-*.exe
+# Compiled (legacy)
 *.obj
 *.o
 *.a
@@ -25,4 +36,3 @@ Thumbs.db
 *.dll
 *.dylib
 *.so
-git-toolkit/.cache/

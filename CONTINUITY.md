@@ -1,50 +1,42 @@
-Last updated: 2026-03-20
+Last updated: 2026-03-22
 
-- Goal: Evolve git-toolkit from Bash scripts into a native multi-platform C++ app (CLI + GUI) for managing Git multi-account environments. Success = working Windows GUI with setup wizard, status dashboard, and pull operations.
+- Goal: Build git-toolkit as a Go-based toolset (CLI + Wails GUI) for managing Git multi-account environments. Two independent binaries sharing a Go library. Success = CLI works for headless servers, GUI works for desktop users.
 - Constraints/Assumptions:
-  - Windows 11 + Git Bash (MINGW64) is the primary dev/test environment
-  - Toolchain: Clang 21.1.8, CMake 4.2.3, Ninja 1.13.2 (all verified working)
+  - Windows 11 + Git Bash is the primary dev/test environment
+  - Toolchain: Go 1.26.1, Node.js 24.13.1, Wails CLI v2.11.0
   - No Claude attribution in commits
-  - Spanish text must use proper accents (á, é, í, ó, ú, ñ)
-  - C++ coding standards in `.claude/rules/cpp-coding.md` (PascalCase functions, _camelCase members, no exceptions, scoped_lock not lock_guard)
-  - macOS GUI will use SwiftUI + C bridge (Xcode 26.3 + Claude), Linux will use GTK4/gtkmm
-  - Config v1 (`accounts`) lives at `~/.config/git-config-repos/git-config-repos.json`
-  - Config v2 (`sources`) will live at `~/.config/git-toolkit/git-toolkit.json`
-  - Three auth methods: GCM, Token (PAT), SSH
-  - JSON key renamed: `accounts` → `sources` in v2
+  - Spanish text must use proper accents
+  - git-config-repos.sh and git-status-pull.sh remain UNTOUCHED
+  - Config v1 (accounts, string bools) at ~/.config/git-config-repos/git-config-repos.json
+  - Config v2 (sources, real bools, token auth) at ~/.config/git-toolkit/git-toolkit.json
+  - Three auth methods: GCM (desktops), SSH (headless), Token (automation)
+  - Providers: GitHub, GitLab, Gitea, Forgejo, Bitbucket, generic
 - Key decisions:
-  - Repo restructured into 3 sub-projects: `git-toolkit/` (C++ app), `git-config-repos/` (shell), `git-status-pull/` (shell)
-  - Schema + jsonc moved under `git-config-repos/`
-  - Consumer repo `$schema` URL updated to new path
-  - Core is a static C++ lib, GUIs link against it, git operations shell out to `git` (not libgit2)
-  - nlohmann/json for JSON, Catch2 for tests, FetchContent for deps
+  - Go + Wails + Svelte (abandoned C++ native GUI approach)
+  - Two independent binaries: git-toolkit (CLI) and git-toolkit-gui (Wails)
+  - Shared Go library in pkg/ (config, git, provider, mirror, status)
+  - Git operations via os/exec (system git), not libgit2
+  - CLI uses Cobra for subcommands
+  - Schema v2 simplified: essential renames + real bools + token + provider field
 - State:
   - Done:
-    - Phase 0: Repo restructured, docs for each sub-project, CMake skeleton
-    - Phase 1: Core library complete (log, platform, config, git_ops, sync_status, engine) — 29 tests passing
-    - Phase 2: CLI complete (validate, status, pull, sync subcommands with --verbose, --source, --repo, --dry-run)
-    - Phase 3: Windows GUI foundation (MainWindow with TreeView, detail panel, toolbar buttons, status bar) — builds and launches
-    - JSON Schema created and published at `git-config-repos/git-config-repos.schema.json`
-    - Tilde expansion bug fixed in `git-config-repos.sh` for repo-level folder paths
-  - Now: User will test the GUI visually and provide feedback
+    - Phase 0: C++ deleted, Go module, schema, JSONC example, docs, README, CLAUDE.md
+    - Phase 1: Go library complete + CLI complete
+      - pkg/config: load v1+v2, save, migrate, path, validate — 12 tests
+      - pkg/git: clone, fetch, pull, status, rev-count, config get/set, IsRepo — 9 tests
+      - pkg/status: Check, CheckAll, ResolveRepoPath, State enum — 8 tests
+      - cmd/cli: Cobra CLI with version, config show/path, status, clone, pull, migrate (--dry-run)
+      - All 29 tests pass, CLI tested against real v1 config and real repos
+  - Now: Phase 1 complete. Ready for Phase 2 (Provider API integration)
   - Next:
-    - Iterate on GUI based on user feedback (layout, UX, colors)
-    - Add status color dots in TreeView (green/blue/yellow/red)
-    - Add async operations (worker threads + PostMessage) so UI doesn't freeze during fetch/pull
-    - Add setup wizard dialog
-    - Add GCM browser auth flow dialog
-    - Credentials module (Win32 CredRead/CredWrite, token storage)
-    - SSH ops module (key generation, ssh-config management)
-    - macOS GUI (SwiftUI) and Linux GUI (GTK4) — best-effort without testing on those platforms
-- Open questions:
-  - UNCONFIRMED: Does the user want the GUI to support both v1 and v2 config editing, or only v2?
-  - UNCONFIRMED: Should `git-toolkit sync` trigger GCM browser auth automatically or prompt first?
+    - Phase 2: Provider APIs (GitHub, GitLab, Gitea/Forgejo discovery)
+    - Phase 3: Advanced ops (migration, push mirrors)
+    - Phase 4: Wails GUI foundation
+    - Phase 5: GUI full features
 - Working set:
-  - `git-toolkit/core/` — C++ core library (all modules)
-  - `git-toolkit/cli/main.cpp` — CLI entry point
-  - `git-toolkit/gui/windows/` — Win32 GUI (MainWindow.cpp, main.cpp)
-  - `git-toolkit/CMakeLists.txt` — top-level build
-  - `~/.config/git-config-repos/git-config-repos.json` — real config being tested against
-  - Build: `cd git-toolkit && cmake --build build` / Test: `cd build && ctest --output-on-failure`
-  - GUI: `./build/gui/windows/git-toolkit-gui.exe`
-  - CLI: `./build/cli/git-toolkit.exe <command>`
+  - pkg/config/ — config.go, load.go, save.go, migrate.go, path.go, config_test.go
+  - pkg/git/ — git.go, git_test.go
+  - pkg/status/ — status.go, status_test.go
+  - cmd/cli/ — main.go, version_cmd.go, config_cmd.go, status_cmd.go, clone_cmd.go, pull_cmd.go, migrate_cmd.go
+  - Build: go build -o git-toolkit.exe ./cmd/cli
+  - Test: go test ./pkg/...

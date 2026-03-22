@@ -4,31 +4,53 @@ This file provides guidance to Claude Code when working with code in this reposi
 
 ## What this repo is
 
-A multi-component project for managing Git multi-account environments across providers (GitHub, GitLab, Gitea, Forgejo). Three sub-projects:
+A multi-component project for managing Git multi-account environments across providers (GitHub, GitLab, Gitea, Forgejo, Bitbucket).
 
-1. **`git-toolkit/`** — Native C++ app (core library + CLI + platform-native GUIs). In development.
-2. **`git-config-repos/`** — Bash script for automated repo configuration. Production, power users.
-3. **`git-status-pull/`** — Bash script for sync status and auto-pull. Production, power users.
+1. **Go app** (`cmd/cli/`, `cmd/gui/`, `pkg/`) — CLI + Wails GUI sharing a Go library. In development.
+2. **`git-config-repos/`** — Bash script for automated repo configuration. Production, power users. UNTOUCHED.
+3. **`git-status-pull/`** — Bash script for sync status and auto-pull. Production, power users. UNTOUCHED.
 
 ## Repository layout
 
 ```text
-git-toolkit/              # C++ core + CLI + GUI (SwiftUI/Win32/GTK)
-  core/                   # libgittoolkit shared library
-  cli/                    # CLI frontend
-  gui/{macos,windows,linux}/
-  docs/
-
-git-config-repos/         # Shell script sub-project
-  git-config-repos.sh
-  git-config-repos.jsonc  # Annotated example config
-  git-config-repos.schema.json  # v1 JSON Schema
-  docs/
-
-git-status-pull/          # Shell script sub-project
-  git-status-pull.sh
-  docs/
+cmd/
+  cli/                    Go CLI binary (git-toolkit)
+  gui/                    Wails v2 + Svelte GUI (git-toolkit-gui)
+pkg/                      Shared Go library
+  config/                 Config v2 model, load/save, v1→v2 migration
+  git/                    Git subprocess operations (os/exec)
+  provider/               Provider API clients (GitHub, GitLab, Gitea, Forgejo)
+  mirror/                 Repo migration + push mirrors
+  status/                 Clone status checking
+docs/
+  user-guide.md           End-user documentation
+  developer-guide.md      Build instructions, contributing
+  architecture.md         Technical design
+  migration.md            v1→v2 migration guide
+git-config-repos/         Shell script sub-project (UNTOUCHED)
+git-status-pull/          Shell script sub-project (UNTOUCHED)
+git-toolkit.schema.json   v2 JSON Schema
+git-toolkit.jsonc         v2 annotated example (Spanish comments)
+go.mod / go.sum           Go module
+README.md                 Project overview
 ```
+
+## Go app
+
+**Language:** Go. **GUI:** Wails v2 + Svelte. **Two independent binaries** from shared `pkg/`.
+
+```bash
+# Build CLI
+go build -o git-toolkit ./cmd/cli
+
+# Build GUI (requires Wails CLI)
+cd cmd/gui && wails build
+
+# Run tests
+go test ./pkg/...
+```
+
+Git operations shell out to system `git` via `os/exec`. Provider APIs use `net/http`.
 
 ## Shell scripts
 
@@ -54,18 +76,11 @@ Scans all `.git` directories from CWD and reports sync status. Can auto-pull if 
 
 Both scripts share the same detection block: `PLATFORM` (`wsl2` | `gitbash` | `macos` | `linux`) and `cmdgit` (`git.exe` on WSL2, `git` elsewhere).
 
-## C++ core (git-toolkit/)
-
-Built with CMake, C++20. Dependencies: nlohmann/json (header-only), Catch2 or GoogleTest.
-
-Credential stores use native OS APIs: Security.framework (macOS), Win32 CredRead/CredWrite (Windows), libsecret (Linux).
-
-macOS GUI uses SwiftUI with a C bridge layer to the C++ core. Windows GUI uses Win32. Linux GUI uses GTK4 via gtkmm.
-
 ## Config format
 
-**v1** (current, shell scripts): `~/.config/git-config-repos/git-config-repos.json`
-**v2** (git-toolkit app): `~/.config/git-toolkit/git-toolkit.json` — renames `accounts` to `sources`, real booleans, adds `"token"` credential type.
+**v1** (shell scripts): `~/.config/git-config-repos/git-config-repos.json` — `accounts`, string booleans, `gcm`/`ssh` only.
+
+**v2** (Go app): `~/.config/git-toolkit/git-toolkit.json` — `sources`, real booleans, `gcm`/`ssh`/`token`, nested SSH/GCM objects, `provider` field, `version: 2`.
 
 ## Workflow Orchestration
 
@@ -87,7 +102,7 @@ macOS GUI uses SwiftUI with a C bridge layer to the C++ core. Windows GUI uses W
 
 - Never mark a task complete without proving it works
 - Test scripts with `bash -n` (syntax check) and `shellcheck` when available
-- C++ builds: `cmake --build` + `ctest`
+- Go: `go build ./...` + `go test ./...`
 - Validate config templates render correctly before committing
 
 ### 4. Autonomous Bug Fixing

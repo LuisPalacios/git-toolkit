@@ -1,0 +1,295 @@
+// Fichero de configuración para git-toolkit (formato v2)
+// Ubicación: $HOME/.config/git-toolkit/git-toolkit.json
+//
+// ELIMINA TODOS LOS COMENTARIOS ANTES DE USAR ESTE FICHERO
+// (JSON estándar no admite comentarios; este fichero es solo una plantilla documentada)
+//
+// Estructura:
+//   "accounts" → QUIÉN eres en cada servidor (credenciales, identidad)
+//   "sources"  → QUÉ clonas de cada cuenta (repos organizados por org/repo)
+//
+// Reglas de carpetas (3 niveles):
+//   1er nivel: clave del source (o "folder" del source si se especifica)
+//   2do nivel: org (parte antes de / en la clave del repo, o "id_folder" si se especifica)
+//   3er nivel: repo (parte después de / en la clave del repo, o "clone_folder" si se especifica)
+//   Si clone_folder es absoluto (/, ~ o ../): reemplaza toda la ruta
+//
+{
+    // Referencia al esquema JSON para validación y autocompletado en editores
+    "$schema": "https://raw.githubusercontent.com/LuisPalacios/git-toolkit/main/git-toolkit.schema.json",
+
+    // Versión del formato. Siempre 2.
+    "version": 2,
+
+    // ──────────────────────────────────────────────────────────────────────────────
+    // SECCIÓN GLOBAL
+    // ──────────────────────────────────────────────────────────────────────────────
+    "global": {
+
+        // Directorio raíz donde se organizan todos los repositorios.
+        //   "~/00.git"                 →  $HOME/00.git
+        //   "/home/luis/00.git"        →  ruta absoluta en Linux/macOS
+        //   "C:/Users/luis/00.git"     →  ruta absoluta en Windows (Git Bash)
+        "folder": "~/00.git",
+
+        // Credenciales SSH
+        // Recomendado para servidores headless (acceso por SSH, sin navegador).
+        "credential_ssh": {
+            "enabled": true,
+            "ssh_folder": "~/.ssh"
+        },
+
+        // Credenciales GCM (Git Credential Manager)
+        // Recomendado para escritorios con navegador (Windows, macOS, Linux con GUI).
+        // credential_store según plataforma:
+        //   "wincredman"    → Windows Credential Manager
+        //   "keychain"      → macOS Keychain
+        //   "secretservice" → Linux Secret Service (GNOME Keyring / KWallet)
+        "credential_gcm": {
+            "enabled": true,
+            "helper": "manager",
+            "credential_store": "wincredman"
+        }
+    },
+
+    // ──────────────────────────────────────────────────────────────────────────────
+    // SECCIÓN ACCOUNTS — QUIÉN eres en cada servidor
+    // ──────────────────────────────────────────────────────────────────────────────
+    //
+    // Cada clave es un identificador único (también sirve como nombre de carpeta
+    // de primer nivel por defecto). Una cuenta = un login (hostname + username).
+    //
+    "accounts": {
+
+        // ── Forgejo homelab (una cuenta, múltiples organizaciones) ───────────────
+        "git-parchis": {
+            "provider": "forgejo",
+            "url": "https://git.parchis.org",
+            "username": "luis",
+            "name": "Luis Palacios",
+            "email": "luis@example.com",
+            "default_branch": "main",
+            "default_credential_type": "gcm",
+            "ssh": {
+                "host": "gt-luis",
+                "hostname": "git.parchis.org",
+                "key_type": "ed25519"
+            },
+            "gcm": {
+                "provider": "generic"
+            }
+        },
+
+        // ── GitHub cuenta personal ───────────────────────────────────────────────
+        "github-LuisPalacios": {
+            "provider": "github",
+            "url": "https://github.com",
+            "username": "LuisPalacios",
+            "name": "Luis Palacios",
+            "email": "luis@example.com",
+            "default_branch": "main",
+            "default_credential_type": "gcm",
+            "ssh": {
+                "host": "gh-LuisPalacios",
+                "hostname": "github.com",
+                "key_type": "ed25519"
+            },
+            "gcm": {
+                "provider": "github",
+                "use_http_path": false
+            }
+        },
+
+        // ── GitHub cuenta de empresa (usuario distinto) ──────────────────────────
+        "github-sumwall": {
+            "provider": "github",
+            "url": "https://github.com",
+            "username": "SW-Luis-Palacios",
+            "name": "Luis Palacios",
+            "email": "luis@sumwall.com",
+            "default_branch": "main",
+            "default_credential_type": "gcm",
+            "ssh": {
+                "host": "gh-Sumwall",
+                "hostname": "github.com",
+                "key_type": "ed25519"
+            },
+            "gcm": {
+                "provider": "github",
+                "use_http_path": false
+            }
+        },
+
+        // ── GitLab cuenta cloud ──────────────────────────────────────────────────
+        "gitlab-luis": {
+            "provider": "gitlab",
+            "url": "https://gitlab.com",
+            "username": "luispalacios",
+            "name": "Luis Palacios",
+            "email": "luis@example.com",
+            "default_branch": "main",
+            "default_credential_type": "gcm",
+            "ssh": {
+                "host": "gl-luispalacios",
+                "hostname": "gitlab.com",
+                "key_type": "ed25519"
+            },
+            "gcm": {
+                "provider": "gitlab"
+            }
+        },
+
+        // ── Cuenta mínima (solo campos obligatorios) ─────────────────────────────
+        "github-minimal": {
+            "provider": "github",
+            "url": "https://github.com",
+            "username": "OtroUsuario",
+            "name": "Luis Palacios",
+            "email": "luis@example.com"
+        }
+    },
+
+    // ──────────────────────────────────────────────────────────────────────────────
+    // SECCIÓN SOURCES — QUÉ clonas de cada cuenta
+    // ──────────────────────────────────────────────────────────────────────────────
+    //
+    // Cada clave es un identificador del source (también sirve como carpeta de
+    // primer nivel, salvo que se especifique "folder").
+    //
+    // Los repos usan formato "org/repo":
+    //   "familia/ines-denia"      → carpeta: git-parchis/familia/ines-denia/
+    //   "LuisPalacios/git-toolkit" → carpeta: github-LuisPalacios/LuisPalacios/git-toolkit/
+    //
+    // Campos opcionales en cada repo:
+    //   credential_type  Sobreescribe el default del account ("gcm", "ssh", "token")
+    //   name             Sobreescribe git user.name
+    //   email            Sobreescribe git user.email
+    //   id_folder        Sobreescribe el 2do nivel (carpeta de org). Siempre relativo.
+    //   clone_folder     Sobreescribe el 3er nivel (carpeta de clone).
+    //                    Si es absoluto (/, ~ o ../): reemplaza toda la ruta.
+    //
+    "sources": {
+
+        // ── Forgejo: múltiples organizaciones en una sola source ─────────────────
+        // Cada repo indica su org antes del /: familia/, infra/, luis/, etc.
+        "git-parchis": {
+            "account": "git-parchis",
+            "repos": {
+                // Org "familia"
+                "familia/ines-denia": {},
+
+                // Org "formacion"
+                "formacion/cpp.tour": {},
+
+                // Org "ia-agentica" (varios repos)
+                "ia-agentica/agentic-ai-palas": {},
+                "ia-agentica/notas-granola": {},
+                "ia-agentica/webinar-ia-agentica": {},
+
+                // Org "infra"
+                "infra/homelab-ops": {},
+                "infra/migra-forgejo": {},
+
+                // Org "luis" — repo personal con clone_folder absoluto
+                // Se clona directamente en ~/.config/git-config-repos
+                "luis/git-config-repos-json": {
+                    "clone_folder": "~/.config/git-config-repos"
+                },
+
+                // Org "renueva"
+                "renueva/mentor-emprendimiento-oryon": {}
+            }
+        },
+
+        // ── GitHub personal + repos cross-org ────────────────────────────────────
+        // Repos personales: "LuisPalacios/repo-name"
+        // Repos de otra org: "kollective-networks/repo-name" (acceso con tus credenciales)
+        "github-LuisPalacios": {
+            "account": "github-LuisPalacios",
+            "repos": {
+                "LuisPalacios/LuisPalacios.github.io": {},
+                "LuisPalacios/airlink": {},
+                "LuisPalacios/git-toolkit": {},
+                "LuisPalacios/dotfiles": {},
+                "LuisPalacios/zsh-zshrc": {},
+
+                // Repo con nombre/email distintos al de la cuenta
+                "LuisPalacios/trabajo-freelance": {
+                    "name": "LuisPa Freelance",
+                    "email": "freelance@example.com"
+                },
+
+                // Repo que usa SSH en vez del default GCM
+                "LuisPalacios/repo-con-ssh": {
+                    "credential_type": "ssh"
+                },
+
+                // Repo de otra organización (cross-org, mismo usuario GitHub)
+                "kollective-networks/kltv.kombine": {}
+            }
+        },
+
+        // ── GitHub empresa: org + split account con id_folder ────────────────────
+        "github-sumwall": {
+            "account": "github-sumwall",
+            "repos": {
+                // Repos normales de la org Sumwall
+                "Sumwall/sumwall.browser": {},
+                "Sumwall/sumwall.docs": {},
+                "Sumwall/sumwall.project": {},
+                "Sumwall/sumwall.services": {},
+                "Sumwall/sumwall.web.tester": {},
+
+                // Repo con credencial distinta al default
+                "Sumwall/sumwall.api": {
+                    "credential_type": "token"
+                },
+
+                // Repo que va a una carpeta de 2do nivel distinta (split account)
+                // En vez de github-sumwall/Sumwall/ va a github-sumwall/sumwall-rest/
+                "Sumwall/sumwall.github.io": {
+                    "id_folder": "sumwall-rest"
+                },
+
+                // Ejemplo con AMBOS overrides: id_folder + clone_folder
+                // Va a github-sumwall/sumwall-legacy/web-old/
+                "Sumwall/sumwall.web.legacy": {
+                    "id_folder": "sumwall-legacy",
+                    "clone_folder": "web-old"
+                }
+            }
+        },
+
+        // ── GitLab ───────────────────────────────────────────────────────────────
+        "gitlab-luis": {
+            "account": "gitlab-luis",
+            "repos": {
+                "luispalacios/mi-proyecto-gitlab": {},
+                "luispalacios/pipeline-templates": {
+                    "credential_type": "ssh"
+                }
+            }
+        },
+
+        // ── Cuenta mínima (solo lo necesario) ────────────────────────────────────
+        "github-minimal": {
+            "account": "github-minimal",
+            "repos": {
+                "OtroUsuario/algun-repo": {}
+            }
+        },
+
+        // ── Source con folder personalizado ──────────────────────────────────────
+        // El source key es "mi-servidor-headless" pero los clones van a
+        // ~/00.git/servidor-ssh/ en vez de ~/00.git/mi-servidor-headless/
+        "mi-servidor-headless": {
+            "account": "git-parchis",
+            "folder": "servidor-ssh",
+            "repos": {
+                "infra/scripts-deploy": {
+                    "credential_type": "ssh"
+                }
+            }
+        }
+    }
+}
